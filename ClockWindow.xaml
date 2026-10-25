@@ -1,0 +1,59 @@
+<Window x:Class="Zegar.ClockWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Zegar HTC" Width="420" Height="382" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" FontFamily="Segoe UI" Foreground="{DynamicResource ThemePrimary}" MouseLeftButtonDown="DragWidget">
+ <Window.Resources>
+  <Style x:Key="FlipNumber" TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="Arial"/><Setter Property="FontWeight" Value="Bold"/>
+   <Setter Property="FontSize" Value="110"/><Setter Property="Foreground" Value="{DynamicResource ThemeDigits}"/>
+   <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
+   <Setter Property="Margin" Value="0,-5,0,0"/>
+  </Style>
+  <LinearGradientBrush x:Key="Card" StartPoint="0,0" EndPoint="0,1">
+   <GradientStop Color="#FFFFFF" Offset="0"/><GradientStop Color="#F2F1EE" Offset="0.49"/>
+   <GradientStop Color="#D4D5D7" Offset="0.5"/><GradientStop Color="#FAFAF7" Offset="1"/>
+  </LinearGradientBrush>
+ </Window.Resources>
+ <Grid x:Name="Root" Width="420" Height="382">
+  <Border x:Name="Shell" Margin="12" CornerRadius="25" BorderBrush="#5A6678" BorderThickness="1">
+   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint=".7,1"><GradientStop Color="#343F50"/><GradientStop Color="#171E2B" Offset=".55"/><GradientStop Color="#101722" Offset="1"/></LinearGradientBrush></Border.Background>
+   <Border.Effect><DropShadowEffect BlurRadius="15" ShadowDepth="4" Opacity=".5"/></Border.Effect>
+   <Grid Margin="17,10,17,14">
+    <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="146"/><RowDefinition Height="39"/><RowDefinition Height="1"/><RowDefinition Height="*"/><RowDefinition Height="19"/></Grid.RowDefinitions>
+    <Grid>
+     <StackPanel Orientation="Horizontal"><Ellipse Width="5" Height="5" Fill="#96D5E4" Margin="0,0,7,0"/><TextBlock Text="ZEGAR / POGODA" FontSize="9" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/></StackPanel>
+     <TextBlock x:Name="LockMark" Text="" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Foreground="{DynamicResource ThemeMuted}"/>
+    </Grid>
+    <Grid Grid.Row="1" Margin="0,5,0,0">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="15"/><ColumnDefinition/></Grid.ColumnDefinitions>
+     <Border CornerRadius="10" Background="{DynamicResource Card}" BorderBrush="#121820" BorderThickness="1,1,1,4"><Viewbox Stretch="Uniform" Margin="5,0"><TextBlock x:Name="Hours" Text="00" Style="{StaticResource FlipNumber}"/></Viewbox></Border>
+     <Border Grid.Column="2" CornerRadius="10" Background="{DynamicResource Card}" BorderBrush="#121820" BorderThickness="1,1,1,4"><Viewbox Stretch="Uniform" Margin="5,0"><TextBlock x:Name="Minutes" Text="00" Style="{StaticResource FlipNumber}"/></Viewbox></Border>
+     <Border Height="2" Background="#660F141C" VerticalAlignment="Center" Margin="1,0"/>
+     <Border Grid.Column="2" Height="2" Background="#660F141C" VerticalAlignment="Center" Margin="1,0"/>
+     <Border Width="4" Height="17" Background="#626973" HorizontalAlignment="Left" CornerRadius="1"/>
+     <Border Width="4" Height="17" Background="#626973" HorizontalAlignment="Right" CornerRadius="1"/>
+     <Border Grid.Column="2" Width="4" Height="17" Background="#626973" HorizontalAlignment="Left" CornerRadius="1"/>
+     <Border Grid.Column="2" Width="4" Height="17" Background="#626973" HorizontalAlignment="Right" CornerRadius="1"/>
+    </Grid>
+    <TextBlock x:Name="DateLabel" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource ThemePrimary}"/>
+    <Border Grid.Row="3" Background="{DynamicResource ThemeLine}"/>
+    <Grid Grid.Row="4" Margin="2,11,2,0">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <TextBlock x:Name="WeatherIcon" Text="☁" FontFamily="Segoe UI Symbol" FontSize="51" Foreground="#FFD77C" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,6,0">
+      <TextBlock x:Name="CityLabel" Text="Warszawa" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+      <TextBlock x:Name="ConditionLabel" Text="Pobieranie pogody…" Foreground="{DynamicResource ThemeSecondary}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+      <TextBlock x:Name="DetailsLabel" Foreground="{DynamicResource ThemeMuted}" FontSize="10" Margin="0,5,0,0"/>
+     </StackPanel>
+     <StackPanel Grid.Column="2" VerticalAlignment="Center">
+      <TextBlock x:Name="TemperatureLabel" Text="—°" FontSize="37" FontWeight="Light" HorizontalAlignment="Right"/>
+      <TextBlock Text="CELSJUSZA" FontSize="8" Foreground="{DynamicResource ThemeMuted}" HorizontalAlignment="Right"/>
+     </StackPanel>
+    </Grid>
+    <Grid Grid.Row="5" Margin="2,3,2,0">
+     <TextBlock x:Name="StatusLabel" Text="Łączenie…" FontSize="9" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/>
+     <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9"><Hyperlink NavigateUri="https://open-meteo.com/" RequestNavigate="OpenAttribution" Foreground="{DynamicResource ThemeMuted}" TextDecorations="None">Open-Meteo ↗</Hyperlink></TextBlock>
+    </Grid>
+   </Grid>
+  </Border>
+ </Grid>
+</Window>
+
