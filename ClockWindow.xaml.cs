@@ -27,7 +27,9 @@ public partial class ClockWindow : Window
     private bool lightBackground;
     private SettingsWindow? editor;
     private Forms.NotifyIcon? tray;
-    private readonly CultureInfo polish = CultureInfo.GetCultureInfo("pl-PL");
+    private bool weatherOffline;
+    private CultureInfo Culture => UiText.Culture(settings.Language);
+    private string T(string text) => UiText.Get(text, settings.Language);
 
     public ClockWindow()
     {
@@ -68,44 +70,51 @@ public partial class ClockWindow : Window
     private void UpdateClock()
     {
         var now = DateTime.Now;
-        Hours.Text = now.ToString("HH", CultureInfo.InvariantCulture);
+        Hours.Text = ClockFormat.Hour(now, settings.Use24HourClock);
         Minutes.Text = now.ToString("mm", CultureInfo.InvariantCulture);
-        DateLabel.Text = now.ToString("dddd, d MMMM yyyy", polish);
+        DateLabel.Text = ClockFormat.Date(now, settings.Language);
+        PeriodLabel.Text = ClockFormat.Period(now, settings.Use24HourClock);
+        PeriodLabel.Visibility = settings.Use24HourClock ? Visibility.Collapsed : Visibility.Visible;
     }
     private ContextMenu CreateMenu()
     {
         var menu = new ContextMenu();
-        var configure = new MenuItem { Header = "Ustawienia…", InputGestureText = "Ctrl+," };
+        var configure = new MenuItem { Header = T("Ustawienia…"), InputGestureText = "Ctrl+," };
         configure.Click += (_, _) => ShowSettings(); menu.Items.Add(configure);
         menu.Items.Add(new Separator());
-        var locked = new MenuItem { Header = "Zablokuj położenie", IsCheckable = true };
+        var locked = new MenuItem { Header = T("Zablokuj położenie"), IsCheckable = true };
         locked.Click += (_, _) => { settings.Locked = locked.IsChecked; ApplySettings(); TrySave(); };
         menu.Items.Add(locked);
-        var onTop = new MenuItem { Header = "Zawsze na wierzchu", IsCheckable = true };
+        var onTop = new MenuItem { Header = T("Zawsze na wierzchu"), IsCheckable = true };
         onTop.Click += (_, _) => { settings.Topmost = onTop.IsChecked; ApplySettings(); TrySave(); };
         menu.Items.Add(onTop);
         menu.Items.Add(new Separator());
-        var refresh = new MenuItem { Header = "Odśwież widżet" };
+        var refresh = new MenuItem { Header = T("Odśwież widżet") };
         refresh.Click += async (_, _) => { UpdateClock(); clockTimer.Stop(); clockTimer.Start(); weatherTimer.Stop(); weatherTimer.Start(); await RefreshWeatherAsync(); };
         menu.Items.Add(refresh);
-        var restart = new MenuItem { Header = "Uruchom ponownie" };
+        var restart = new MenuItem { Header = T("Uruchom ponownie") };
         restart.Click += (_, _) => Restart(); menu.Items.Add(restart);
         menu.Items.Add(new Separator());
-        var exit = new MenuItem { Header = "Zamknij" };
+        var exit = new MenuItem { Header = T("Zamknij") };
         exit.Click += (_, _) => Close(); menu.Items.Add(exit);
         menu.Opened += (_, _) => { locked.IsChecked = settings.Locked; onTop.IsChecked = settings.Topmost; };
         return menu;
     }
     private void SetupTray()
     {
-        tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Zegar HTC • prawy przycisk: menu", Visible = true };
+        if (tray == null)
+        {
+            tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Visible = true };
+            tray.DoubleClick += (_, _) => Dispatcher.Invoke(() => { Show(); Activate(); });
+        }
+        tray.Text = T("Zegar HTC • prawy przycisk: menu");
+        tray.ContextMenuStrip?.Dispose();
         var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Pokaż zegar", null, (_, _) => Dispatcher.Invoke(() => { Show(); EnsureVisible(); Activate(); }));
-        menu.Items.Add("Ustawienia…", null, (_, _) => Dispatcher.Invoke(ShowSettings));
-        menu.Items.Add("Odśwież", null, (_, _) => Dispatcher.InvokeAsync(async () => await RefreshWeatherAsync()));
-        menu.Items.Add("Zamknij", null, (_, _) => Dispatcher.Invoke(Close));
+        menu.Items.Add(T("Pokaż zegar"), null, (_, _) => Dispatcher.Invoke(() => { Show(); EnsureVisible(); Activate(); }));
+        menu.Items.Add(T("Ustawienia…"), null, (_, _) => Dispatcher.Invoke(ShowSettings));
+        menu.Items.Add(T("Odśwież"), null, (_, _) => Dispatcher.InvokeAsync(async () => await RefreshWeatherAsync()));
+        menu.Items.Add(T("Zamknij"), null, (_, _) => Dispatcher.Invoke(Close));
         tray.ContextMenuStrip = menu;
-        tray.DoubleClick += (_, _) => Dispatcher.Invoke(() => { Show(); Activate(); });
     }
     private void ShowSettings()
     {
@@ -130,7 +139,14 @@ public partial class ClockWindow : Window
         Left = settings.Left; Top = settings.Top;
         weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
         CityLabel.Text = settings.City; CityLabel.ToolTip = settings.City;
-        LockMark.Text = settings.Locked ? "POŁOŻENIE ZABLOKOWANE" : "24 H";
+        Title = T("Zegar HTC");
+        HeaderLabel.Text = T("ZEGAR / POGODA"); CelsiusLabel.Text = T("CELSJUSZA");
+        LockMark.Text = settings.Locked ? T("POŁOŻENIE ZABLOKOWANE") : settings.Use24HourClock ? "24 H" : "12 H";
+        ContextMenu = CreateMenu();
+        if (tray != null) SetupTray();
+        UpdateClock();
+        if (lastWeather != null) RenderWeather(lastWeather);
+        else { ConditionLabel.Text = T("Pobieranie pogody…"); StatusLabel.Text = T("Łączenie…"); }
         if (IsLoaded) EnsureVisible();
     }
     private void ApplyColor()
@@ -196,29 +212,25 @@ public partial class ClockWindow : Window
     {
         fetch?.Cancel();
         var request = new CancellationTokenSource(); fetch = request;
-        StatusLabel.Text = "Aktualizowanie…";
+        StatusLabel.Text = T("Aktualizowanie…");
         try
         {
             var result = await weather.GetAsync(settings.Latitude, settings.Longitude, request.Token);
             if (request.IsCancellationRequested) return;
             lastWeather = result;
-            TemperatureLabel.Text = result.Temperature.ToString("0", polish) + "°";
-            ConditionLabel.Text = WeatherService.Description(result.Code);
-            WeatherIcon.Text = WeatherService.Symbol(result.Code, result.IsDay);
-            UpdateWeatherIconColor();
-            DetailsLabel.Text = $"Odcz. {result.FeelsLike.ToString("0", polish)}° · wiatr {result.Wind.ToString("0", polish)} km/h";
-            StatusLabel.ToolTip = "Czas danych z Open-Meteo: " + result.ObservedAt.ToLocalTime().ToString("g", polish);
-            StatusLabel.Text = "Dane z " + result.ObservedAt.ToLocalTime().ToString("HH:mm", polish);
+            weatherOffline = false;
+            RenderWeather(result);
             weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException or ArgumentException)
         {
             if (request.IsCancellationRequested) return;
-            StatusLabel.Text = lastWeather == null ? "Brak połączenia · spróbuję ponownie" : "Brak połączenia · ostatnie dane";
-            StatusLabel.ToolTip = "Nie udało się pobrać pogody. " + ex.Message;
+            weatherOffline = true;
+            StatusLabel.Text = T(lastWeather == null ? "Brak połączenia · spróbuję ponownie" : "Brak połączenia · ostatnie dane");
+            StatusLabel.ToolTip = T("Nie udało się pobrać pogody. ") + ex.Message;
             if (lastWeather == null)
-            { ConditionLabel.Text = "Pogoda niedostępna"; TemperatureLabel.Text = "—°"; DetailsLabel.Text = "PPM → Odśwież widżet"; }
+            { ConditionLabel.Text = T("Pogoda niedostępna"); TemperatureLabel.Text = "—°"; DetailsLabel.Text = T("PPM → Odśwież widżet"); }
             // Retry sooner after an error, without blocking the UI or clock.
             weatherTimer.Interval = TimeSpan.FromMinutes(Math.Min(settings.RefreshMinutes, 2));
         }
@@ -229,18 +241,28 @@ public partial class ClockWindow : Window
             UpdateStatus();
         }
     }
+    private void RenderWeather(Weather result)
+    {
+        TemperatureLabel.Text = result.Temperature.ToString("0", Culture) + "°";
+        ConditionLabel.Text = T(WeatherService.Description(result.Code));
+        WeatherIcon.Text = WeatherService.Symbol(result.Code, result.IsDay);
+        UpdateWeatherIconColor();
+        DetailsLabel.Text = $"{T("Odcz.")} {result.FeelsLike.ToString("0", Culture)}° · {T("wiatr")} {result.Wind.ToString("0", Culture)} km/h";
+        StatusLabel.ToolTip = T("Czas danych z Open-Meteo: ") + ClockFormat.Date(result.ObservedAt.LocalDateTime, settings.Language) + ", " + ClockFormat.Time(result.ObservedAt.LocalDateTime, settings.Use24HourClock);
+        StatusLabel.Text = T("Dane z ") + ClockFormat.Time(result.ObservedAt.LocalDateTime, settings.Use24HourClock);
+    }
     private void UpdateStatus()
     {
-        if (lastWeather == null || fetch != null || StatusLabel.Text.StartsWith("Brak połączenia")) return;
+        if (lastWeather == null || fetch != null || weatherOffline) return;
         bool stale = DateTimeOffset.UtcNow - lastWeather.ObservedAt > TimeSpan.FromMinutes(45);
-        StatusLabel.Text = (stale ? "Starsze dane · " : "Dane z ") + lastWeather.ObservedAt.ToLocalTime().ToString("HH:mm", polish);
+        StatusLabel.Text = T(stale ? "Starsze dane · " : "Dane z ") + ClockFormat.Time(lastWeather.ObservedAt.LocalDateTime, settings.Use24HourClock);
         weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
     }
     private void TrySave()
     {
         try { store.Save(settings); }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
-        { StatusLabel.Text = "Nie udało się zapisać ustawień"; StatusLabel.ToolTip = ex.Message; }
+        { StatusLabel.Text = T("Nie udało się zapisać ustawień"); StatusLabel.ToolTip = ex.Message; }
     }
     private void Restart()
     {

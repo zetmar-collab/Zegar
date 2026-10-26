@@ -19,7 +19,7 @@
    <Grid Margin="17,10,17,14">
     <Grid.RowDefinitions><RowDefinition Height="24"/><RowDefinition Height="146"/><RowDefinition Height="39"/><RowDefinition Height="1"/><RowDefinition Height="*"/><RowDefinition Height="19"/></Grid.RowDefinitions>
     <Grid>
-     <StackPanel Orientation="Horizontal"><Ellipse Width="5" Height="5" Fill="#96D5E4" Margin="0,0,7,0"/><TextBlock Text="ZEGAR / POGODA" FontSize="9" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/></StackPanel>
+     <StackPanel Orientation="Horizontal"><Ellipse Width="5" Height="5" Fill="#96D5E4" Margin="0,0,7,0"/><TextBlock x:Name="HeaderLabel" Text="ZEGAR / POGODA" FontSize="9" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/></StackPanel>
      <TextBlock x:Name="LockMark" Text="" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10" Foreground="{DynamicResource ThemeMuted}"/>
     </Grid>
     <Grid Grid.Row="1" Margin="0,5,0,0">
@@ -33,7 +33,10 @@
      <Border Grid.Column="2" Width="4" Height="17" Background="#626973" HorizontalAlignment="Left" CornerRadius="1"/>
      <Border Grid.Column="2" Width="4" Height="17" Background="#626973" HorizontalAlignment="Right" CornerRadius="1"/>
     </Grid>
-    <TextBlock x:Name="DateLabel" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" Foreground="{DynamicResource ThemePrimary}"/>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+     <TextBlock x:Name="DateLabel" FontSize="14" Foreground="{DynamicResource ThemePrimary}"/>
+     <TextBlock x:Name="PeriodLabel" Margin="8,0,0,0" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemePrimary}"/>
+    </StackPanel>
     <Border Grid.Row="3" Background="{DynamicResource ThemeLine}"/>
     <Grid Grid.Row="4" Margin="2,11,2,0">
      <Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -45,7 +48,7 @@
      </StackPanel>
      <StackPanel Grid.Column="2" VerticalAlignment="Center">
       <TextBlock x:Name="TemperatureLabel" Text="—°" FontSize="37" FontWeight="Light" HorizontalAlignment="Right"/>
-      <TextBlock Text="CELSJUSZA" FontSize="8" Foreground="{DynamicResource ThemeMuted}" HorizontalAlignment="Right"/>
+      <TextBlock x:Name="CelsiusLabel" Text="CELSJUSZA" FontSize="8" Foreground="{DynamicResource ThemeMuted}" HorizontalAlignment="Right"/>
      </StackPanel>
     </Grid>
     <Grid Grid.Row="5" Margin="2,3,2,0">

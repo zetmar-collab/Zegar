@@ -5,6 +5,19 @@
   <StackPanel><TextBlock Text="Twój zegar" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="Miejsce, wygląd i uruchamianie" Foreground="#64748B" Margin="0,4,0,20"/></StackPanel>
   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
   <StackPanel>
+   <Grid Margin="0,0,0,18">
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <StackPanel><TextBlock Text="Język / Language" Margin="0,0,0,8"/>
+     <ComboBox x:Name="LanguageInput" Padding="7" SelectionChanged="LanguageChanged" AutomationProperties.Name="Language / Język">
+      <ComboBoxItem Content="Polski" Tag="pl"/><ComboBoxItem Content="English" Tag="en"/>
+     </ComboBox>
+    </StackPanel>
+    <StackPanel Grid.Column="2"><TextBlock Text="Format zegara" Margin="0,0,0,8"/>
+     <ComboBox x:Name="ClockFormatInput" Padding="7" SelectionChanged="ClockFormatChanged" AutomationProperties.Name="Format zegara">
+      <ComboBoxItem Content="24H"/><ComboBoxItem Content="12H (AM/PM)"/>
+     </ComboBox>
+    </StackPanel>
+   </Grid>
    <TextBlock Text="POGODA DLA MIEJSCOWOŚCI" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,8"/>
    <DockPanel>
     <Button x:Name="SearchButton" Content="Szukaj" Click="Search" DockPanel.Dock="Right" Margin="8,0,0,0"/>

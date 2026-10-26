@@ -1,13 +1,13 @@
 # Zegar HTC — widżet Windows
 
-Natywny widżet WPF dla Windows 10/11 x64, inspirowany klapkowym zegarem HTC Sense. Godzina i minuty w formacie 24 h, polska data oraz aktualna pogoda z Open-Meteo. Czas i data używają strefy czasowej Windows; miejscowość pogody wybiera się niezależnie.
+Natywny widżet WPF dla Windows 10/11 x64, inspirowany klapkowym zegarem HTC Sense. Godzina i minuty w formacie 12 h (AM/PM) lub 24 h, interfejs i data po polsku lub angielsku oraz aktualna pogoda z Open-Meteo. Czas i data używają strefy czasowej Windows; miejscowość pogody wybiera się niezależnie.
 
 ![Zegar HTC na pulpicie — czas, data i pogoda](docs/images/zegar.png)
 
 ## Pobieranie
 
 - [Gotowy Zegar.exe — Windows x64](https://github.com/zetmar-collab/Zegar/releases/latest/download/Zegar.exe)
-- [Pakiet ZIP 1.2.0 ze skryptem instalacyjnym](https://github.com/zetmar-collab/Zegar/releases/download/v1.2.0/Zegar-1.2.0-win-x64.zip)
+- [Pakiet ZIP 1.3.0 ze skryptem instalacyjnym](https://github.com/zetmar-collab/Zegar/releases/download/v1.3.0/Zegar-1.3.0-win-x64.zip)
 - [Wszystkie wydania](https://github.com/zetmar-collab/Zegar/releases)
 
 EXE można uruchomić bezpośrednio. Aby dodać skróty i autostart, pobierz ZIP, rozpakuj cały pakiet i uruchom poniższe polecenie w jego folderze. Kod źródłowy znajduje się w repozytorium, a pliki binarne w sekcji **Releases**. Sumy SHA-256 są dołączone do wydania w pliku `SHA256SUMS.txt`.
@@ -26,6 +26,9 @@ Skrypt kopiuje program do `%LOCALAPPDATA%\Programs\ZegarHTC` i uruchamia widżet
 
 ## Obsługa
 
+- **PPM → Ustawienia → Język / Language**: Polski lub English. Język w ustawieniach zmienia się od razu; zastosowanie do widżetu i zapis następują po kliknięciu „Zapisz ustawienia”. Anulowanie zachowuje dotychczasowy język.
+- **Format zegara**: 24H lub 12H (AM/PM). W 12H północ to 12:00 AM, a południe 12:00 PM. AM/PM widać obok daty. Domyślnie zachowane są polski język i 24H, również po aktualizacji starszej wersji.
+
 - Przeciągnij widżet lewym przyciskiem myszy. Położenie jest zapamiętywane.
 - Prawy przycisk: **Ustawienia**, **Zablokuj położenie**, **Zawsze na wierzchu**, **Odśwież widżet**, **Uruchom ponownie**, **Zamknij**.
 - Ustawienia: miejscowość, rozmiar 65–160%, widoczność 40–100%, pogoda co 5–120 minut, autostart, blokada i zawsze na wierzchu.
@@ -37,6 +40,12 @@ Skrypt kopiuje program do `%LOCALAPPDATA%\Programs\ZegarHTC` i uruchamia widżet
 - W trybie bez „Zawsze na wierzchu” inne okna mogą zasłonić widżet. Jest to osobne okno bez ramki, nie rozszerzenie powłoki Explorer. Windows może ukryć je po użyciu „Pokaż pulpit”; przywróć je z zasobnika.
 
 Ustawienia są zapisywane atomowo w `%LOCALAPPDATA%\ZegarHTC\settings.json`. Po odłączeniu monitora pozycja jest korygowana przy uruchomieniu, zastosowaniu ustawień lub wznowieniu komputera. Przy błędzie połączenia pozostają ostatnie dane z oznaczeniem problemu; następna próba następuje po 2 minutach. Dane starsze niż 45 minut są oznaczane jako starsze. Zegar działa niezależnie od połączenia. Cache pogody nie jest utrwalany między uruchomieniami.
+
+## English
+
+HTC-style desktop clock for Windows 10/11 x64 with Open-Meteo weather. No .NET installation or API key required. Download `Zegar.exe` from [Releases](https://github.com/zetmar-collab/Zegar/releases/latest), or extract the complete ZIP and run `scripts/Install.ps1` to add shortcuts and Windows startup.
+
+Right-click the widget → **Ustawienia** → **Język / Language** → **English** → **Save settings**. Choose **24H** or **12H (AM/PM)** using **Clock format**. The selected language applies to the widget, settings, menus, dates and weather descriptions. System colour pickers and Windows-generated error details follow the Windows language. Location names use Open-Meteo translations where available. Clock time follows your Windows time zone. Settings, colours, fonts, position and startup preferences are retained during updates.
 
 ## Budowanie i testy
 

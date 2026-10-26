@@ -35,7 +35,8 @@ public partial class App : Application
         if (!created) { Shutdown(); return; }
         DispatcherUnhandledException += (_, args) =>
         {
-            MessageBox.Show("Nie udało się wykonać operacji. " + args.Exception.Message, "Zegar", MessageBoxButton.OK, MessageBoxImage.Warning);
+            var language = new SettingsStore().Load().Language;
+            MessageBox.Show(UiText.Get("Nie udało się wykonać operacji. ", language) + args.Exception.Message, UiText.Get("Zegar HTC", language), MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
         MainWindow = new ClockWindow();

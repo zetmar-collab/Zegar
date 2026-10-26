@@ -1,5 +1,13 @@
 # Weryfikacja — 25.10.2026
 
+## Aktualizacja 1.3.0 — 26.10.2026
+
+- Kompilacja i publikacja samodzielnego EXE powiodły się; 21/21 testów lokalnych przechodzi.
+- Nowe testy obejmują północ, południe i ostatnią minutę dnia w 12H, format 24H, daty PL/EN, tłumaczenia oraz migrację i zapis preferencji języka i formatu.
+- W zainstalowanej aplikacji przełączono ustawienia na English i 12H. Potwierdzono przetłumaczone etykiety, angielski podgląd 03:34 PM oraz zapis `Language: en`, `Use24HourClock: false`.
+- Działający widżet pokazał angielską datę, CLOCK / WEATHER, Overcast, Feels like, CELSIUS oraz AM obok daty; czas danych pogodowych miał oznaczenie AM.
+- Po sprawdzeniu przywrócono PL i 24H, zachowując pozostałe preferencje użytkownika.
+
 ## Aktualizacja 1.2.0
 
 - Kompilacja i publikacja samodzielnego EXE powiodły się; przechodzi 12/12 dotychczasowych testów lokalnych.

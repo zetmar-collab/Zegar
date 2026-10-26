@@ -22,6 +22,8 @@ public sealed class WidgetSettings
     public string BackgroundColor { get; set; } = "#171E2B";
     public string FontColor { get; set; } = "";
     public string FontFamily { get; set; } = "";
+    public string Language { get; set; } = "pl";
+    public bool Use24HourClock { get; set; } = true;
     public bool Locked { get; set; }
     public bool Topmost { get; set; }
     public int RefreshMinutes { get; set; } = 15;
@@ -38,6 +40,7 @@ public sealed class WidgetSettings
         if (!IsRgb(BackgroundColor)) BackgroundColor = "#171E2B";
         if (!IsRgb(FontColor)) FontColor = "";
         if (string.IsNullOrWhiteSpace(FontFamily) || FontFamily.Length > 200) FontFamily = "";
+        if (Language != "en") Language = "pl";
     }
     private static bool IsRgb(string? value) => value != null && value.Length == 7 && value[0] == '#' &&
         int.TryParse(value.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out _);
@@ -77,9 +80,9 @@ public sealed class WeatherService
 {
     private readonly HttpClient http;
     public WeatherService(HttpClient http) => this.http = http;
-    public async Task<List<Place>> SearchAsync(string name, CancellationToken cancellation)
+    public async Task<List<Place>> SearchAsync(string name, CancellationToken cancellation, string language = "pl")
     {
-        using var response = await http.GetAsync("https://geocoding-api.open-meteo.com/v1/search?name=" + Uri.EscapeDataString(name) + "&count=8&language=pl&format=json", cancellation);
+        using var response = await http.GetAsync("https://geocoding-api.open-meteo.com/v1/search?name=" + Uri.EscapeDataString(name) + "&count=8&language=" + (language == "en" ? "en" : "pl") + "&format=json", cancellation);
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
         var places = new List<Place>();

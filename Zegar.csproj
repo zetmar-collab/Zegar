@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Zegar</AssemblyName>
     <RootNamespace>Zegar</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
   </PropertyGroup>
   <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
 </Project>

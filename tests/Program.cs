@@ -50,6 +50,20 @@ try
     Check(failed, "Anulowanie poprzedniego odświeżania");
     Check(WeatherService.Description(66) == "Marznący deszcz" && WeatherService.Description(99) == "Burza" && WeatherService.Symbol(0, false) == "☾", "Kody WMO i ikona nocna");
 
+    var midnight = new DateTime(2026, 10, 26, 0, 0, 0);
+    Check(ClockFormat.Time(midnight, false) == "12:00 AM" && ClockFormat.Hour(midnight, false) == "12", "12H: północ to 12 AM");
+    Check(ClockFormat.Time(midnight.AddHours(12), false) == "12:00 PM", "12H: południe to 12 PM");
+    Check(ClockFormat.Time(midnight.AddHours(23).AddMinutes(59), false) == "11:59 PM", "12H: ostatnia minuta dnia");
+    Check(ClockFormat.Time(midnight, true) == "00:00" && ClockFormat.Period(midnight, true) == "" && ClockFormat.Hour(midnight.AddHours(23), true) == "23", "24H: północ i brak AM/PM");
+    Check(ClockFormat.Date(midnight, "en") == "Monday, 26 October 2026" && ClockFormat.Date(midnight, "pl") == "poniedziałek, 26 października 2026", "Daty PL i EN niezależne od języka Windows");
+    Check(UiText.Get("Deszcz", "en") == "Rain" && UiText.Get("Ustawienia…", "en") == "Settings…" && UiText.Get("Deszcz", "pl") == "Deszcz", "Tłumaczenia pogody i menu");
+    File.WriteAllText(path, """{"City":"Gliwice","Scale":0.85}""");
+    Check(store.Load().Language == "pl" && store.Load().Use24HourClock && store.Load().City == "Gliwice", "Migracja starszych ustawień: domyślnie PL i 24H");
+    loaded.Language = "en"; loaded.Use24HourClock = false; store.Save(loaded);
+    Check(store.Load().Language == "en" && !store.Load().Use24HourClock, "Zapamiętywanie EN i 12H");
+    loaded.Language = "invalid"; loaded.Normalize();
+    Check(loaded.Language == "pl", "Nieznany język wraca do PL");
+
     if (args.Contains("--live"))
     {
         using var liveHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };

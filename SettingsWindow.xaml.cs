@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -6,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Automation;
 
 namespace Zegar;
 
@@ -19,11 +21,20 @@ public partial class SettingsWindow : Window
     private bool ready;
     private string backgroundColor = "#171E2B";
     private string fontColor = "";
-    private const string DefaultFont = "Domyślna (HTC)";
+    private string language = "pl";
+    private string DefaultFont => T("Domyślna (HTC)");
+    private string T(string text) => UiText.Get(text, language);
+    private readonly Dictionary<TextBlock, string> labels = new();
+    private readonly Dictionary<ContentControl, string> captions = new();
+    private readonly Dictionary<DependencyObject, string> accessibleNames = new();
     public event EventHandler? SettingsApplied;
     public SettingsWindow(WidgetSettings settings, WeatherService weather)
     {
         InitializeComponent(); this.settings = settings; this.weather = weather;
+        CaptureLabels(this);
+        language = settings.Language;
+        LanguageInput.SelectedIndex = language == "en" ? 1 : 0;
+        ClockFormatInput.SelectedIndex = settings.Use24HourClock ? 0 : 1;
         Height = Math.Min(Height, SystemParameters.WorkArea.Height - 24);
         CityInput.Text = settings.City;
         backgroundColor = settings.BackgroundColor;
@@ -40,26 +51,27 @@ public partial class SettingsWindow : Window
         StartupInput.IsChecked = Autostart.Enabled;
         TopmostInput.IsChecked = settings.Topmost; LockInput.IsChecked = settings.Locked;
         ready = true;
+        ApplyLanguage();
         Closed += (_, _) => { search?.Cancel(); };
     }
     private async void Search(object sender, RoutedEventArgs e)
     {
         string query = CityInput.Text.Trim();
-        if (query.Length < 2) { SearchStatus.Text = "Wpisz przynajmniej 2 znaki."; return; }
+        if (query.Length < 2) { SearchStatus.Text = T("Wpisz przynajmniej 2 znaki."); return; }
         search?.Cancel(); var request = new CancellationTokenSource(); search = request;
         SearchButton.IsEnabled = false; SaveButton.IsEnabled = false;
-        SearchStatus.Text = "Wyszukiwanie w Open-Meteo…";
+        SearchStatus.Text = T("Wyszukiwanie w Open-Meteo…");
         try
         {
-            var results = await weather.SearchAsync(query, request.Token);
+            var results = await weather.SearchAsync(query, request.Token, language);
             if (request.IsCancellationRequested || CityInput.Text.Trim() != query) return;
             searchedText = query; Places.ItemsSource = results;
             if (results.Count > 0) Places.SelectedIndex = 0;
-            SearchStatus.Text = results.Count == 0 ? "Brak wyników. Spróbuj innej nazwy." : "Wybierz właściwą miejscowość i zapisz ustawienia.";
+            SearchStatus.Text = T(results.Count == 0 ? "Brak wyników. Spróbuj innej nazwy." : "Wybierz właściwą miejscowość i zapisz ustawienia.");
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException)
-        { SearchStatus.Text = "Nie udało się wyszukać. Sprawdź połączenie i spróbuj ponownie."; }
+        { SearchStatus.Text = T("Nie udało się wyszukać. Sprawdź połączenie i spróbuj ponownie."); }
         finally
         {
             if (ReferenceEquals(search, request)) { search = null; SearchButton.IsEnabled = true; SaveButton.IsEnabled = true; }
@@ -72,26 +84,28 @@ public partial class SettingsWindow : Window
     {
         if (!ready) return;
         selected = null; Places.ItemsSource = null; search?.Cancel();
-        SearchStatus.Text = "Kliknij Szukaj, aby wybrać miejscowość.";
+        SearchStatus.Text = T("Kliknij Szukaj, aby wybrać miejscowość.");
     }
     private void PlaceSelected(object sender, SelectionChangedEventArgs e) => selected = Places.SelectedItem as Place;
     private void ScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     { if (ScaleLabel != null) ScaleLabel.Text = $"{e.NewValue:0}%"; }
     private void OpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    { if (OpacityLabel != null) OpacityLabel.Text = $"{e.NewValue:0}% widoczności"; }
+    { if (OpacityLabel != null) OpacityLabel.Text = $"{e.NewValue:0}% {T("widoczności")}"; }
     private void Save(object sender, RoutedEventArgs e)
     {
         if (CityInput.Text.Trim() != settings.City && (selected == null || searchedText != CityInput.Text.Trim()))
-        { SaveStatus.Text = "Wyszukaj miejscowość i wybierz wynik z listy."; return; }
+        { SaveStatus.Text = T("Wyszukaj miejscowość i wybierz wynik z listy."); return; }
         try { Autostart.Set(StartupInput.IsChecked == true); }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
-        { SaveStatus.Text = "Nie udało się zmienić autostartu: " + ex.Message; return; }
+        { SaveStatus.Text = T("Nie udało się zmienić autostartu: ") + ex.Message; return; }
         if (selected != null)
         { settings.City = selected.Name; settings.Latitude = selected.Latitude; settings.Longitude = selected.Longitude; }
         settings.Scale = ScaleInput.Value / 100; settings.Opacity = OpacityInput.Value / 100;
         settings.BackgroundColor = backgroundColor;
         settings.FontColor = fontColor;
         settings.FontFamily = FontInput.SelectedItem is string family && family != DefaultFont ? family : "";
+        settings.Language = language;
+        settings.Use24HourClock = ClockFormatInput.SelectedIndex == 0;
         settings.RefreshMinutes = (int)(IntervalInput.SelectedItem ?? 15);
         settings.Topmost = TopmostInput.IsChecked == true; settings.Locked = LockInput.IsChecked == true;
         SettingsApplied?.Invoke(this, EventArgs.Empty); Close();
@@ -134,10 +148,13 @@ public partial class SettingsWindow : Window
         if (FontPreview == null) return;
         var text = Appearance.TextColor(backgroundColor, fontColor);
         FontColorSwatch.Background = new SolidColorBrush(text);
-        FontColorSwatch.ToolTip = string.IsNullOrEmpty(fontColor) ? "Automatyczny" : fontColor;
+        FontColorSwatch.ToolTip = string.IsNullOrEmpty(fontColor) ? T("Automatyczny") : fontColor;
         FontPreviewBackground.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(backgroundColor));
         FontPreview.Foreground = new SolidColorBrush(text);
         FontPreview.FontFamily = new FontFamily(FontInput.SelectedItem is string family && family != DefaultFont ? family : "Segoe UI");
+        bool use24 = ClockFormatInput.SelectedIndex != 1;
+        FontPreview.Text = ClockFormat.Time(new DateTime(2026, 10, 26, 15, 34, 0), use24) + " · " +
+            (language == "en" ? "Monday" : "Poniedziałek") + " · 21°C";
     }
     private void ChooseFontColor(object sender, RoutedEventArgs e)
     {
@@ -149,4 +166,40 @@ public partial class SettingsWindow : Window
     }
     private void ResetFontColor(object sender, RoutedEventArgs e)
     { fontColor = ""; UpdateFontPreview(); }
+    private void CaptureLabels(DependencyObject element)
+    {
+        if (element is TextBlock block && block.Name is not ("SearchStatus" or "FontPreview" or "ScaleLabel" or "OpacityLabel" or "SaveStatus") && !string.IsNullOrEmpty(block.Text))
+            labels[block] = block.Text;
+        if (element is ContentControl control && control.Content is string content) captions[control] = content;
+        string name = AutomationProperties.GetName(element);
+        if (!string.IsNullOrEmpty(name)) accessibleNames[element] = name;
+        foreach (var child in LogicalTreeHelper.GetChildren(element).OfType<DependencyObject>()) CaptureLabels(child);
+    }
+    private void ApplyLanguage()
+    {
+        Title = T("Ustawienia zegara");
+        foreach (var label in labels) label.Key.Text = T(label.Value);
+        foreach (var caption in captions) caption.Key.Content = T(caption.Value);
+        foreach (var name in accessibleNames) AutomationProperties.SetName(name.Key, T(name.Value));
+        if (FontInput.ItemsSource is List<string> fonts)
+        {
+            bool wasDefault = FontInput.SelectedIndex == 0;
+            var selectedFont = FontInput.SelectedItem;
+            var updatedFonts = fonts.ToList(); updatedFonts[0] = DefaultFont;
+            FontInput.ItemsSource = updatedFonts;
+            FontInput.SelectedItem = wasDefault ? DefaultFont : selectedFont;
+        }
+        OpacityLabel.Text = $"{OpacityInput.Value:0}% {T("widoczności")}";
+        SearchStatus.Text = T(Places.Items.Count > 0 ? "Wybierz właściwą miejscowość i zapisz ustawienia." : "Wpisz nazwę i wybierz miejscowość z listy.");
+        SaveStatus.Text = "";
+        UpdateFontPreview();
+    }
+    private void LanguageChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ready) return;
+        language = LanguageInput.SelectedIndex == 1 ? "en" : "pl";
+        ApplyLanguage();
+    }
+    private void ClockFormatChanged(object sender, SelectionChangedEventArgs e)
+    { if (ready) UpdateFontPreview(); }
 }
