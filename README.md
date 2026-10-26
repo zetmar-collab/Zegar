@@ -4,6 +4,10 @@ Natywny widżet WPF dla Windows 10/11 x64, inspirowany klapkowym zegarem HTC Sen
 
 ![Zegar HTC na pulpicie — czas, data i pogoda](docs/images/zegar.png)
 
+English · 12H (AM/PM):
+
+![HTC Clock — English interface and 12-hour clock with AM/PM](docs/images/zegar-en-12h.png)
+
 ## Pobieranie
 
 - [Gotowy Zegar.exe — Windows x64](https://github.com/zetmar-collab/Zegar/releases/latest/download/Zegar.exe)
