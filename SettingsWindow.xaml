@@ -1,5 +1,5 @@
 <Window x:Class="Zegar.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Ustawienia zegara" Width="610" Height="800" MinWidth="540" MinHeight="540" ResizeMode="CanResize" WindowStyle="SingleBorderWindow" WindowStartupLocation="CenterScreen" Background="#F6F8FC" Foreground="#172337" FontFamily="Segoe UI" FontSize="13" ShowInTaskbar="False">
+ Icon="pack://application:,,,/Zegar;component/assets/Zegar.ico" Title="Ustawienia zegara" Width="610" Height="800" MinWidth="540" MinHeight="540" ResizeMode="CanResize" WindowStyle="SingleBorderWindow" WindowStartupLocation="CenterScreen" Background="#F6F8FC" Foreground="#172337" FontFamily="Segoe UI" FontSize="13" ShowInTaskbar="False">
  <Grid Margin="28,23">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <StackPanel><TextBlock Text="Twój zegar" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="Miejsce, wygląd i uruchamianie" Foreground="#64748B" Margin="0,4,0,20"/></StackPanel>
@@ -46,8 +46,11 @@
    </Border>
    <Grid><TextBlock Text="Rozmiar widżetu"/><TextBlock x:Name="ScaleLabel" HorizontalAlignment="Right" Foreground="#64748B"/></Grid>
    <Slider x:Name="ScaleInput" Minimum="65" Maximum="160" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="ScaleChanged" Margin="0,10,0,17" AutomationProperties.Name="Rozmiar widżetu w procentach"/>
-   <Grid><TextBlock Text="Przezroczystość"/><TextBlock x:Name="OpacityLabel" HorizontalAlignment="Right" Foreground="#64748B"/></Grid>
+   <TextBlock x:Name="ContrastLabel" Foreground="#AE3131" TextWrapping="Wrap" Margin="0,0,0,10"/>
+   <Grid><TextBlock Text="Przezroczystość tła"/><TextBlock x:Name="OpacityLabel" HorizontalAlignment="Right" Foreground="#64748B"/></Grid>
    <Slider x:Name="OpacityInput" Minimum="40" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="OpacityChanged" Margin="0,10,0,17" AutomationProperties.Name="Widoczność widżetu w procentach"/>
+   <Grid><TextBlock Text="Widoczność tekstu"/><TextBlock x:Name="TextOpacityLabel" HorizontalAlignment="Right" Foreground="#64748B"/></Grid>
+   <Slider x:Name="TextOpacityInput" Minimum="40" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="TextOpacityChanged" Margin="0,10,0,17" AutomationProperties.Name="Widoczność tekstu"/>
    <DockPanel Margin="0,0,0,20"><TextBlock Text="Odświeżaj pogodę co" VerticalAlignment="Center"/><ComboBox x:Name="IntervalInput" Width="105" HorizontalAlignment="Right" Padding="5" AutomationProperties.Name="Częstotliwość odświeżania"/></DockPanel>
    <CheckBox x:Name="StartupInput" Content="Uruchamiaj razem z systemem Windows" Margin="0,0,0,12"/>
    <CheckBox x:Name="TopmostInput" Content="Zawsze na wierzchu" Margin="0,0,0,12"/>
@@ -56,6 +59,8 @@
   </StackPanel>
   </ScrollViewer>
   <StackPanel Grid.Row="2">
+   <TextBlock x:Name="RecoveryLabel" Foreground="#8A5300" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"/>
+   <TextBlock x:Name="VersionLabel" Foreground="#64748B" FontSize="11" Margin="0,8,0,0"/>
    <TextBlock x:Name="SaveStatus" Foreground="#AE3131" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Anuluj" IsCancel="True" Click="Cancel"/><Button x:Name="SaveButton" Content="Zapisz ustawienia" Background="#244A6E" Foreground="White" Margin="0" Click="Save"/></StackPanel>
   </StackPanel>

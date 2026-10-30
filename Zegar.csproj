@@ -8,7 +8,12 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Zegar</AssemblyName>
     <RootNamespace>Zegar</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets/Zegar.ico</ApplicationIcon>
+    <!-- WPF owns process DPI awareness; WinForms is used only for tray and colour dialogs. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
   <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
+  <ItemGroup><Resource Include="assets/Zegar.ico" /></ItemGroup>
 </Project>

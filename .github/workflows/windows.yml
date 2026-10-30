@@ -1,0 +1,32 @@
+name: Windows checks and builds
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build
+        run: dotnet build Zegar.csproj -c Release
+      - name: Core regression checks
+        run: dotnet run --project tests/Zegar.Checks.csproj -c Release
+      - name: WPF regression checks (isolated settings)
+        run: dotnet run --project tests/UiChecks/Zegar.UiChecks.csproj -c Release
+      - name: Installer policy
+        shell: pwsh
+        run: ./tests/Installer.Checks.ps1
+      - name: Build standalone app
+        shell: pwsh
+        run: ./scripts/Build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zegar-windows-x64
+          path: publish/Zegar.exe

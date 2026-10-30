@@ -16,25 +16,36 @@ namespace Zegar;
 
 public partial class ClockWindow : Window
 {
-    private readonly SettingsStore store = new();
-    private readonly WidgetSettings settings;
-    private readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(18) };
+    private readonly SettingsStore store;
+    private WidgetSettings settings;
+    private readonly HttpClient http;
+    private readonly WeatherCacheStore cache;
+    private readonly IStartupSettings startup;
+    private readonly WeatherState weatherState = new();
     private readonly WeatherService weather;
     private readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer weatherTimer = new();
     private CancellationTokenSource? fetch;
-    private Weather? lastWeather;
+    private bool closing;
+    private string? persistenceError;
+    private string? recoveryNotice;
+    private ForecastWindow? forecastWindow;
     private bool lightBackground;
     private SettingsWindow? editor;
     private Forms.NotifyIcon? tray;
-    private bool weatherOffline;
     private CultureInfo Culture => UiText.Culture(settings.Language);
     private string T(string text) => UiText.Get(text, settings.Language);
 
-    public ClockWindow()
+    public ClockWindow() : this(new SettingsStore(), new HttpClient { Timeout = TimeSpan.FromSeconds(18) }, new WeatherCacheStore()) { }
+    internal ClockWindow(SettingsStore store, HttpClient http, WeatherCacheStore cache, IStartupSettings? startup = null)
     {
         InitializeComponent();
+        this.store = store; this.http = http; this.cache = cache;
+        this.startup = startup ?? new WindowsStartupSettings();
         settings = store.Load();
+        if (store.RecoveredFromBackup) recoveryNotice = "Przywrócono ustawienia z kopii zapasowej.";
+        else if (store.LoadFailed) recoveryNotice = "Nie udało się odczytać ustawień. Uszkodzony plik zostanie zachowany.";
+        LoadWeatherCache();
         weather = new WeatherService(http);
         ContextMenu = CreateMenu();
         KeyDown += (_, args) =>
@@ -47,21 +58,23 @@ public partial class ClockWindow : Window
         weatherTimer.Tick += async (_, _) => await RefreshWeatherAsync();
         Loaded += async (_, _) =>
         {
-            EnsureVisible(); UpdateClock(); clockTimer.Start(); weatherTimer.Start();
+            EnsureVisible(); RememberPosition(); UpdateClock(); clockTimer.Start();
             SetupTray(); await RefreshWeatherAsync();
         };
         Closed += (_, _) =>
         {
-            clockTimer.Stop(); weatherTimer.Stop(); fetch?.Cancel();
-            editor?.Close(); tray?.Dispose(); http.Dispose(); TrySave();
+            closing = true; clockTimer.Stop(); weatherTimer.Stop(); fetch?.Cancel();
+            editor?.Close(); forecastWindow?.Close(); tray?.Icon?.Dispose(); tray?.Dispose(); http.Dispose(); TrySave();
         };
         SystemEventsHook();
     }
     private void SystemEventsHook()
     {
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerChanged;
-        Closed += (_, _) => Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerChanged;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+        Closed += (_, _) => { Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerChanged; Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; };
     }
+    private void OnDisplayChanged(object? sender, EventArgs args) => Dispatcher.InvokeAsync(() => { EnsureVisible(); RememberPosition(); TrySave(); });
     private void OnPowerChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e)
     {
         if (e.Mode == Microsoft.Win32.PowerModes.Resume)
@@ -90,7 +103,7 @@ public partial class ClockWindow : Window
         menu.Items.Add(onTop);
         menu.Items.Add(new Separator());
         var refresh = new MenuItem { Header = T("Odśwież widżet") };
-        refresh.Click += async (_, _) => { UpdateClock(); clockTimer.Stop(); clockTimer.Start(); weatherTimer.Stop(); weatherTimer.Start(); await RefreshWeatherAsync(); };
+        refresh.Click += async (_, _) => { UpdateClock(); await RefreshWeatherAsync(); };
         menu.Items.Add(refresh);
         var restart = new MenuItem { Header = T("Uruchom ponownie") };
         restart.Click += (_, _) => Restart(); menu.Items.Add(restart);
@@ -104,8 +117,10 @@ public partial class ClockWindow : Window
     {
         if (tray == null)
         {
-            tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Visible = true };
-            tray.DoubleClick += (_, _) => Dispatcher.Invoke(() => { Show(); Activate(); });
+            using var iconStream = Application.GetResourceStream(new Uri("pack://application:,,,/Zegar;component/assets/Zegar.ico")).Stream;
+            using var sourceIcon = new System.Drawing.Icon(iconStream, 32, 32);
+            tray = new Forms.NotifyIcon { Icon = (System.Drawing.Icon)sourceIcon.Clone(), Visible = true };
+            tray.DoubleClick += (_, _) => Dispatcher.Invoke(ShowWidget);
         }
         tray.Text = T("Zegar HTC • prawy przycisk: menu");
         tray.ContextMenuStrip?.Dispose();
@@ -119,12 +134,43 @@ public partial class ClockWindow : Window
     private void ShowSettings()
     {
         if (editor != null) { editor.Activate(); return; }
-        var dialog = new SettingsWindow(settings, weather) { Owner = this, Topmost = Topmost, ShowInTaskbar = ShowInTaskbar };
+        var dialog = new SettingsWindow(settings, weather, recoveryNotice, startup.Enabled) { Owner = this, Topmost = Topmost, ShowInTaskbar = ShowInTaskbar };
         editor = dialog;
-        dialog.SettingsApplied += async (_, _) => { lastWeather = null; ApplySettings(); TrySave(); await RefreshWeatherAsync(); };
+        dialog.CommitSettings = CommitSettings;
         Root.Opacity = .45;
         try { dialog.ShowDialog(); }
         finally { editor = null; Root.Opacity = 1; }
+    }
+    private string? CommitSettings(WidgetSettings candidate, bool startup)
+    {
+        string? previousCommand = this.startup.Command;
+        candidate.Normalize();
+        try { store.Commit(candidate, () => this.startup.Set(startup), () => this.startup.Restore(previousCommand)); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        { return UiText.Get("Nie udało się zapisać ustawień",candidate.Language) + ": " + ex.Message; }
+        bool moved = !WeatherState.SameLocation(settings.Latitude, settings.Longitude, candidate.Latitude, candidate.Longitude);
+        bool intervalChanged = settings.RefreshMinutes != candidate.RefreshMinutes;
+        settings = candidate.Clone(); persistenceError = recoveryNotice = null;
+        forecastWindow?.Close();
+        if (moved)
+        {
+            fetch?.Cancel(); weatherState.SelectLocation(settings.Latitude, settings.Longitude); LoadWeatherCache();
+        }
+        ApplySettings();
+        if (moved) Dispatcher.InvokeAsync(async () => await RefreshWeatherAsync());
+        else if (intervalChanged) ScheduleRefresh();
+        return null;
+    }
+    private void LoadWeatherCache()
+    {
+        var saved = cache.Load(settings.Latitude, settings.Longitude);
+        if (saved != null) weatherState.LoadCache(saved);
+    }
+    private void ScheduleRefresh()
+    {
+        weatherTimer.Stop();
+        weatherTimer.Interval = weatherState.RefreshDelay(settings.RefreshMinutes);
+        if (!closing && IsLoaded) weatherTimer.Start();
     }
     private void ApplySettings()
     {
@@ -135,9 +181,8 @@ public partial class ClockWindow : Window
         Hours.FontFamily = Minutes.FontFamily = string.IsNullOrEmpty(settings.FontFamily) ? new FontFamily("Arial") : font;
         Root.LayoutTransform = new ScaleTransform(settings.Scale, settings.Scale);
         Width = 420 * settings.Scale; Height = 382 * settings.Scale;
-        Opacity = settings.Opacity; Topmost = settings.Topmost;
+        Opacity = 1; Topmost = settings.Topmost;
         Left = settings.Left; Top = settings.Top;
-        weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
         CityLabel.Text = settings.City; CityLabel.ToolTip = settings.City;
         Title = T("Zegar HTC");
         HeaderLabel.Text = T("ZEGAR / POGODA"); CelsiusLabel.Text = T("CELSJUSZA");
@@ -145,8 +190,8 @@ public partial class ClockWindow : Window
         ContextMenu = CreateMenu();
         if (tray != null) SetupTray();
         UpdateClock();
-        if (lastWeather != null) RenderWeather(lastWeather);
-        else { ConditionLabel.Text = T("Pobieranie pogody…"); StatusLabel.Text = T("Łączenie…"); }
+        RenderWeather();
+        ForecastButton.Content = T("Prognoza…");
         if (IsLoaded) EnsureVisible();
     }
     private void ApplyColor()
@@ -158,10 +203,10 @@ public partial class ClockWindow : Window
         lightBackground = light;
         var primary = Appearance.TextColor(settings.BackgroundColor, settings.FontColor);
         bool customText = !string.IsNullOrEmpty(settings.FontColor);
-        Resources["ThemePrimary"] = new SolidColorBrush(primary);
-        Resources["ThemeSecondary"] = new SolidColorBrush(customText ? primary : Blend(primary, background, .12));
-        Resources["ThemeMuted"] = new SolidColorBrush(customText ? primary : Blend(primary, background, .20));
-        Resources["ThemeDigits"] = new SolidColorBrush(customText ? primary : Color.FromRgb(34, 38, 45));
+        Resources["ThemePrimary"] = new SolidColorBrush(primary) { Opacity = settings.TextOpacity };
+        Resources["ThemeSecondary"] = new SolidColorBrush(customText ? primary : Blend(primary, background, .12)) { Opacity = settings.TextOpacity };
+        Resources["ThemeMuted"] = new SolidColorBrush(customText ? primary : Blend(primary, background, .20)) { Opacity = settings.TextOpacity };
+        Resources["ThemeDigits"] = new SolidColorBrush(customText ? primary : Color.FromRgb(34, 38, 45)) { Opacity = settings.TextOpacity };
         Resources["ThemeLine"] = new SolidColorBrush(Blend(light ? Colors.Black : Colors.White, background, .75));
         bool darkCards = customText && Appearance.IsLight(primary);
         Resources["Card"] = new LinearGradientBrush(new GradientStopCollection
@@ -176,93 +221,103 @@ public partial class ClockWindow : Window
         {
             new(Blend(background, Colors.White, .13), 0), new(background, .55), new(Blend(background, Colors.Black, .3), 1)
         }, new Point(0, 0), new Point(.7, 1));
+        Shell.Background.Opacity = settings.Opacity;
         UpdateWeatherIconColor();
     }
     private void UpdateWeatherIconColor()
     {
         WeatherIcon.Foreground = lightBackground ? (System.Windows.Media.Brush)Resources["ThemePrimary"] :
-            new SolidColorBrush(lastWeather?.Code is 0 or 1 or 2 ? Color.FromRgb(255, 215, 124) : Color.FromRgb(168, 202, 230));
+            new SolidColorBrush(weatherState.Snapshot?.Current.Code is 0 or 1 or 2 ? Color.FromRgb(255, 215, 124) : Color.FromRgb(168, 202, 230));
+        WeatherIcon.Opacity = settings.TextOpacity;
     }
     private void EnsureVisible()
     {
-        var area = SystemParameters.WorkArea;
-        bool visible = false;
-        // Convert each monitor's physical work area to this window's device-independent units.
-        var transform = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
-        foreach (var screen in Forms.Screen.AllScreens)
-        {
-            var a = transform.Transform(new Point(screen.WorkingArea.Left, screen.WorkingArea.Top));
-            var b = transform.Transform(new Point(screen.WorkingArea.Right, screen.WorkingArea.Bottom));
-            if (Left >= a.X && Top >= a.Y && Left + Width <= b.X && Top + Height <= b.Y) { visible = true; break; }
-        }
-        if (!visible)
-        {
-            Left = Math.Clamp(Left, area.Left, Math.Max(area.Left, area.Right - Width));
-            Top = Math.Clamp(Top, area.Top, Math.Max(area.Top, area.Bottom - Height));
-        }
+        if (WindowPlacement.EnsureVisible(this))
+        { settings.Scale = ((ScaleTransform)Root.LayoutTransform).ScaleX; RememberPosition(); }
+    }
+    private void RememberPosition()
+    {
         settings.Left = Left; settings.Top = Top;
+        if (WindowPlacement.Position(this) is Point point) { settings.PhysicalLeft = point.X; settings.PhysicalTop = point.Y; }
+    }
+    protected override void OnSourceInitialized(EventArgs e)
+    { base.OnSourceInitialized(e); WindowPlacement.Restore(this, settings.PhysicalLeft, settings.PhysicalTop); }
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    { base.OnDpiChanged(oldDpi,newDpi); Dispatcher.InvokeAsync(() => { EnsureVisible(); RememberPosition(); TrySave(); }); }
+    public void ShowWidget()
+    {
+        if (editor != null) { editor.WindowState = WindowState.Normal; editor.Activate(); return; }
+        Show(); WindowState = WindowState.Normal; EnsureVisible(); Activate();
+    }
+    private void OpenForecast(object sender, RoutedEventArgs e)
+    {
+        if (forecastWindow != null) { forecastWindow.Activate(); return; }
+        forecastWindow = new ForecastWindow(settings, RefreshWeatherAsync) { Owner = this, Topmost = Topmost };
+        forecastWindow.Update(weatherState.Snapshot, weatherState.Status(settings.Language,settings.Use24HourClock,DateTimeOffset.UtcNow));
+        forecastWindow.Closed += (_, _) => forecastWindow = null;
+        forecastWindow.Show();
     }
     private void DragWidget(object sender, MouseButtonEventArgs e)
     {
         if (settings.Locked || e.ChangedButton != MouseButton.Left) return;
-        if (e.OriginalSource is System.Windows.Documents.Run || e.OriginalSource is System.Windows.Documents.Hyperlink) return;
-        DragMove(); settings.Left = Left; settings.Top = Top; TrySave();
+        if (e.OriginalSource is System.Windows.Documents.Run || e.OriginalSource is System.Windows.Documents.Hyperlink || WindowPlacement.IsButton(e.OriginalSource as DependencyObject)) return;
+        DragMove(); RememberPosition(); TrySave();
     }
     private async Task RefreshWeatherAsync()
     {
         fetch?.Cancel();
+        weatherTimer.Stop();
         var request = new CancellationTokenSource(); fetch = request;
-        StatusLabel.Text = T("Aktualizowanie…");
+        weatherState.Begin(); UpdateStatus();
         try
         {
-            var result = await weather.GetAsync(settings.Latitude, settings.Longitude, request.Token);
+            var result = await weather.GetSnapshotAsync(settings.Latitude, settings.Longitude, request.Token);
             if (request.IsCancellationRequested) return;
-            lastWeather = result;
-            weatherOffline = false;
-            RenderWeather(result);
-            weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
+            weatherState.Complete(result);
+            try { cache.Save(result); } catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException) { recoveryNotice = "Nie udało się zapisać pamięci pogody."; }
+            RenderWeather();
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException or ArgumentException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException or ArgumentException or FormatException or OverflowException)
         {
             if (request.IsCancellationRequested) return;
-            weatherOffline = true;
-            StatusLabel.Text = T(lastWeather == null ? "Brak połączenia · spróbuję ponownie" : "Brak połączenia · ostatnie dane");
-            StatusLabel.ToolTip = T("Nie udało się pobrać pogody. ") + ex.Message;
-            if (lastWeather == null)
-            { ConditionLabel.Text = T("Pogoda niedostępna"); TemperatureLabel.Text = "—°"; DetailsLabel.Text = T("PPM → Odśwież widżet"); }
-            // Retry sooner after an error, without blocking the UI or clock.
-            weatherTimer.Interval = TimeSpan.FromMinutes(Math.Min(settings.RefreshMinutes, 2));
+            weatherState.Fail(ex.Message); RenderWeather();
         }
         finally
         {
-            if (ReferenceEquals(fetch, request)) fetch = null;
+            if (ReferenceEquals(fetch, request)) { fetch = null; weatherState.Cancel(); if (!closing) ScheduleRefresh(); }
             request.Dispose();
             UpdateStatus();
         }
     }
-    private void RenderWeather(Weather result)
+    private void RenderWeather()
     {
+        var result = weatherState.Snapshot?.Current;
+        if (result == null)
+        {
+            ConditionLabel.Text = T(weatherState.Offline ? "Pogoda niedostępna" : "Pobieranie pogody…");
+            TemperatureLabel.Text = "—°"; DetailsLabel.Text = ""; WeatherIcon.Text = "?";
+            UpdateStatus(); return;
+        }
         TemperatureLabel.Text = result.Temperature.ToString("0", Culture) + "°";
         ConditionLabel.Text = T(WeatherService.Description(result.Code));
         WeatherIcon.Text = WeatherService.Symbol(result.Code, result.IsDay);
         UpdateWeatherIconColor();
         DetailsLabel.Text = $"{T("Odcz.")} {result.FeelsLike.ToString("0", Culture)}° · {T("wiatr")} {result.Wind.ToString("0", Culture)} km/h";
-        StatusLabel.ToolTip = T("Czas danych z Open-Meteo: ") + ClockFormat.Date(result.ObservedAt.LocalDateTime, settings.Language) + ", " + ClockFormat.Time(result.ObservedAt.LocalDateTime, settings.Use24HourClock);
-        StatusLabel.Text = T("Dane z ") + ClockFormat.Time(result.ObservedAt.LocalDateTime, settings.Use24HourClock);
+        UpdateStatus();
     }
     private void UpdateStatus()
     {
-        if (lastWeather == null || fetch != null || weatherOffline) return;
-        bool stale = DateTimeOffset.UtcNow - lastWeather.ObservedAt > TimeSpan.FromMinutes(45);
-        StatusLabel.Text = T(stale ? "Starsze dane · " : "Dane z ") + ClockFormat.Time(lastWeather.ObservedAt.LocalDateTime, settings.Use24HourClock);
-        weatherTimer.Interval = TimeSpan.FromMinutes(settings.RefreshMinutes);
+        StatusLabel.Text = persistenceError == null ? weatherState.Status(settings.Language, settings.Use24HourClock, DateTimeOffset.UtcNow) : T("Nie udało się zapisać ustawień");
+        string observed = weatherState.Snapshot == null ? "" : T("Czas danych z Open-Meteo: ") + ClockFormat.Date(weatherState.Snapshot.Current.ObservedAt.LocalDateTime, settings.Language) + ", " + ClockFormat.Time(weatherState.Snapshot.Current.ObservedAt.LocalDateTime, settings.Use24HourClock);
+        StatusLabel.ToolTip = string.Join("\n", new[] { observed, weatherState.Error, persistenceError, recoveryNotice == null ? null : T(recoveryNotice) });
+        forecastWindow?.Update(weatherState.Snapshot, weatherState.Status(settings.Language, settings.Use24HourClock, DateTimeOffset.UtcNow));
     }
     private void TrySave()
     {
-        try { store.Save(settings); }
+        try { store.Save(settings); persistenceError = null; }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
-        { StatusLabel.Text = T("Nie udało się zapisać ustawień"); StatusLabel.ToolTip = ex.Message; }
+        { persistenceError = ex.Message; UpdateStatus(); }
     }
     private void Restart()
     {

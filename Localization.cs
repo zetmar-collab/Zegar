@@ -10,6 +10,21 @@ public static class UiText
     public static string Get(string polish, string language) => language == "en" && English.TryGetValue(polish, out var text) ? text : polish;
     private static readonly Dictionary<string, string> English = new()
     {
+        ["Prognoza…"] = "Forecast…",
+        ["Prognoza na 3 dni"] = "3-day forecast",
+        ["Opady"] = "Rain chance",
+        ["Wschód"] = "Sunrise",
+        ["Zachód"] = "Sunset",
+        ["Czasy w strefie miejscowości"] = "Times in the location's time zone",
+        ["Prognoza niedostępna. Spróbuj odświeżyć pogodę."] = "Forecast unavailable. Try refreshing the weather.",
+        ["Zapisane dane · "] = "Cached data · ",
+        ["Przezroczystość tła"] = "Background opacity",
+        ["Widoczność tekstu"] = "Text opacity",
+        ["Niski kontrast tekstu — wybierz jaśniejszy lub ciemniejszy kolor."] = "Low text contrast — choose a lighter or darker colour.",
+        ["Przywrócono ustawienia z kopii zapasowej."] = "Settings were restored from a backup.",
+        ["Nie udało się odczytać ustawień. Uszkodzony plik zostanie zachowany."] = "Settings could not be read. The damaged file will be preserved.",
+        ["Nie udało się zapisać pamięci pogody."] = "Could not save the weather cache.",
+        ["Zegar już działa, ale nie odpowiada. Użyj skrótu Restart zegara HTC."] = "The clock is running but not responding. Use the Restart zegara HTC shortcut.",
         ["Zegar HTC"] = "HTC Clock",
         ["Ustawienia zegara"] = "Clock settings",
         ["Twój zegar"] = "Your clock",

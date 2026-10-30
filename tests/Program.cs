@@ -64,6 +64,45 @@ try
     loaded.Language = "invalid"; loaded.Normalize();
     Check(loaded.Language == "pl", "Nieznany język wraca do PL");
 
+    Check(WeatherService.Symbol(2,false) != WeatherService.Symbol(2,true) && WeatherService.Symbol(-1,true) == "?", "Nocne zachmurzenie i neutralna ikona nieznanej pogody");
+    store.Save(new WidgetSettings { City = "Poprzednie" }); store.Save(new WidgetSettings { City = "Nowsze" });
+    File.WriteAllText(path,"{bad");
+    Check(store.Load().City == "Poprzednie" && store.RecoveredFromBackup, "Odzyskanie poprawnej kopii ustawień");
+    store.Save(new WidgetSettings { City = "Odzyskane" });
+    Check(Directory.GetFiles(folder,"settings.json.corrupt-*").Length > 0 && File.ReadAllText(path+".bak").Contains("Poprzednie"), "Uszkodzony plik zachowany bez nadpisania dobrej kopii");
+    var transactionFile=Path.Combine(folder,"blocked"); Directory.CreateDirectory(transactionFile);
+    bool external=false, rolledBack=false;
+    failed=false;
+    try { new SettingsStore(transactionFile).Commit(new(),()=>external=true,()=>{external=false;rolledBack=true;}); } catch(Exception ex) when(ex is IOException or UnauthorizedAccessException) {failed=true;}
+    Check(failed && rolledBack && !external,"Nieudany zapis wycofuje zmianę zewnętrzną");
+    external=false;
+    failed=false;
+    try { store.Commit(new WidgetSettings { City="Nie zapisuj" },()=>throw new IOException("registry simulation"),()=>external=true); } catch(IOException) {failed=true;}
+    Check(failed && store.Load().City=="Odzyskane" && !external,"Nieudana zmiana autostartu nie zmienia pliku ustawień");
+
+    var snapshot=new WeatherSnapshot(50,19,new Weather(8,5,3,false,10,DateTimeOffset.UtcNow),new(),"Europe/Warsaw",DateTimeOffset.UtcNow);
+    var state=new WeatherState();state.Complete(snapshot);state.Fail("offline");
+    Check(state.Status("en",false,DateTimeOffset.UtcNow).StartsWith("Offline") && state.Snapshot==snapshot && state.RefreshDelay(15)==TimeSpan.FromMinutes(2),"Offline zachowuje pogodę i ponawia po 2 minutach");
+    state.SelectLocation(50,19);
+    Check(state.Offline && state.Snapshot==snapshot,"Ta sama lokalizacja nie usuwa pogody ani stanu offline");
+    state.SelectLocation(51,19);
+    Check(state.Snapshot==null,"Zmiana miasta usuwa dane poprzedniej lokalizacji");
+    state.LoadCache(snapshot);
+    Check(state.Status("en",true,DateTimeOffset.UtcNow).StartsWith("Cached"),"Oznaczenie danych z pamięci dyskowej");
+    state.Complete(snapshot with {Current=snapshot.Current with {ObservedAt=DateTimeOffset.UtcNow.AddHours(-3)}});
+    Check(state.Status("pl",true,DateTimeOffset.UtcNow).StartsWith("Starsze dane"),"Wiek danych nie zależy od powodzenia połączenia");
+    var cache=new WeatherCacheStore(Path.Combine(folder,"cache"));cache.Save(snapshot);
+    Check(cache.Load(50,19)?.Current.Temperature==8 && cache.Load(51,19)==null,"Cache dyskowy jest przypisany do współrzędnych");
+    foreach(var file in Directory.GetFiles(Path.Combine(folder,"cache"))) File.WriteAllText(file,"bad");
+    Check(cache.Load(50,19)==null,"Uszkodzony cache nie blokuje uruchomienia");
+    handler.Status=HttpStatusCode.OK;
+    handler.Body="""{"timezone":"Europe/Warsaw","current":{"temperature_2m":8,"apparent_temperature":5,"weather_code":3,"is_day":0,"wind_speed_10m":10,"time":1792886400},"daily":{"time":[1792886400],"temperature_2m_min":[3],"temperature_2m_max":[12],"precipitation_probability_max":[null],"weather_code":[2],"sunrise":[null],"sunset":[1792926400]}}""";
+    var forecast=await service.GetSnapshotAsync(50,19,default);
+    Check(forecast.Forecast.Count==1 && forecast.Forecast[0].Minimum==3 && forecast.Forecast[0].PrecipitationProbability==null && forecast.Forecast[0].Sunrise==null,"Prognoza: zakres temperatur i brakujące opady/wschód");
+    handler.Body=handler.Body.Replace("\"temperature_2m_min\":[3]","\"temperature_2m_min\":[]");failed=false;
+    try {await service.GetSnapshotAsync(50,19,default);}catch(System.Text.Json.JsonException){failed=true;}
+    Check(failed,"Odrzucenie niespójnych tablic prognozy");
+
     if (args.Contains("--live"))
     {
         using var liveHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -73,6 +112,8 @@ try
         var current = await live.GetAsync(cities[0].Latitude, cities[0].Longitude, default);
         Check(double.IsFinite(current.Temperature) && (DateTimeOffset.UtcNow - current.ObservedAt).Duration() < TimeSpan.FromHours(3), "LIVE: aktualne dane pogodowe Open-Meteo");
         Console.WriteLine($"LIVE: {cities[0].Name}: {current.Temperature}°C, {WeatherService.Description(current.Code)}, {current.ObservedAt:O}");
+        var liveForecast=await live.GetSnapshotAsync(cities[0].Latitude,cities[0].Longitude,default);
+        Check(liveForecast.Forecast.Count==3 && liveForecast.Forecast.All(day=>day.Minimum<=day.Maximum),"LIVE: 3-dniowa prognoza Open-Meteo");
     }
     Console.WriteLine($"Wynik: {checks} testów OK.");
 }

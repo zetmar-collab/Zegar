@@ -1,4 +1,19 @@
-# Weryfikacja — 25.10.2026
+# Weryfikacja — Zegar HTC
+
+## Aktualizacja 1.4.0 — 30.10.2026
+
+- Kompilacja Release: 0 błędów i 0 ostrzeżeń. Samodzielny EXE i wariant wymagający .NET budują się poprawnie.
+- 35 testów logiki, 17 izolowanych testów WPF i 7 testów polityki instalatora: 59/59. Dodatkowe 3 testy rzeczywistego Open-Meteo: łącznie 62/62.
+- Test WPF z rzeczywistym DispatcherTimer potwierdza brak odsuwania odświeżania przez aktualizację statusu. Sprawdzono offline, zmianę wyglądu bez utraty danych, ponowienie po błędzie oraz osobną przezroczystość tekstu.
+- Test z zablokowanym plikiem konfiguracji potwierdza wycofanie zmiany autostartu; błąd zapisu pozostawia edytor otwarty. Testy używają katalogów tymczasowych i zastępczego autostartu, bez zmian rejestru użytkownika.
+- Sprawdzono kopię ustawień, cache między uruchomieniami, dane uszkodzone oraz niezgodną miejscowość, parsowanie prognozy, ikony nocne i nieznane kody.
+- Geometria okna: monitor z ujemnymi współrzędnymi, odłączony monitor, zbyt duże okno, brak listy monitorów. Kanał drugiej instancji obsługuje wielokrotne przywołanie.
+- W działającym interfejsie sprawdzono prognozę Gliwic z danymi Open-Meteo, godziny wschodu/zachodu, modalne ustawienia, podgląd kontrastu i numer wersji.
+- Dodano własny plik ICO z rozmiarami 16, 20, 24, 32, 48, 64, 128 i 256 px oraz źródłowy skrypt rysujący ikonę.
+- W zainstalowanym EXE potwierdzono ikonę na pasku tytułu ustawień. Drugie uruchomienie zakończyło dodatkowy proces i pozostawiło jedną instancję. Po sprawdzeniu przywrócono zwykły tryb widżetu i zachowano preferencje użytkownika.
+- Przygotowano podpisywanie SHA-256 z weryfikacją certyfikatu i znacznika czasu. EXE pozostaje niepodpisany — brak certyfikatu wydawcy.
+
+Nie przeprowadzano fizycznego odłączania monitorów, zmiany sprzętowej skali DPI ani wylogowania Windows. Te scenariusze są częściowo pokryte testami logiki; wymagają dodatkowego sprawdzenia na odpowiednim sprzęcie. Publiczne API jest testowane oddzielnie od CI, aby dostępność sieci nie blokowała testów regresji.
 
 ## Aktualizacja 1.3.0 — 26.10.2026
 

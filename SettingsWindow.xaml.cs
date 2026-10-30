@@ -27,10 +27,11 @@ public partial class SettingsWindow : Window
     private readonly Dictionary<TextBlock, string> labels = new();
     private readonly Dictionary<ContentControl, string> captions = new();
     private readonly Dictionary<DependencyObject, string> accessibleNames = new();
-    public event EventHandler? SettingsApplied;
-    public SettingsWindow(WidgetSettings settings, WeatherService weather)
+    private readonly string? recoveryNotice;
+    public Func<WidgetSettings, bool, string?>? CommitSettings { get; set; }
+    public SettingsWindow(WidgetSettings settings, WeatherService weather, string? recoveryNotice = null, bool? startupEnabled = null)
     {
-        InitializeComponent(); this.settings = settings; this.weather = weather;
+        InitializeComponent(); this.settings = settings.Clone(); this.weather = weather; this.recoveryNotice = recoveryNotice;
         CaptureLabels(this);
         language = settings.Language;
         LanguageInput.SelectedIndex = language == "en" ? 1 : 0;
@@ -46,9 +47,11 @@ public partial class SettingsWindow : Window
         FontInput.SelectedItem = string.IsNullOrEmpty(settings.FontFamily) ? DefaultFont : settings.FontFamily;
         UpdateColorSwatch();
         ScaleInput.Value = settings.Scale * 100; OpacityInput.Value = settings.Opacity * 100;
+        TextOpacityInput.Value = settings.TextOpacity * 100;
+        VersionLabel.Text = "Zegar HTC " + typeof(App).Assembly.GetName().Version!.ToString(3);
         IntervalInput.ItemsSource = new[] { 5, 10, 15, 30, 60, 120 }.Append(settings.RefreshMinutes).Distinct().Order().ToArray();
         IntervalInput.SelectedItem = settings.RefreshMinutes;
-        StartupInput.IsChecked = Autostart.Enabled;
+        StartupInput.IsChecked = startupEnabled ?? Autostart.Enabled;
         TopmostInput.IsChecked = settings.Topmost; LockInput.IsChecked = settings.Locked;
         ready = true;
         ApplyLanguage();
@@ -90,17 +93,15 @@ public partial class SettingsWindow : Window
     private void ScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     { if (ScaleLabel != null) ScaleLabel.Text = $"{e.NewValue:0}%"; }
     private void OpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    { if (OpacityLabel != null) OpacityLabel.Text = $"{e.NewValue:0}% {T("widoczności")}"; }
+    { if (OpacityLabel != null) OpacityLabel.Text = $"{e.NewValue:0}% {T("widoczności")}"; if (ready) UpdateFontPreview(); }
     private void Save(object sender, RoutedEventArgs e)
     {
         if (CityInput.Text.Trim() != settings.City && (selected == null || searchedText != CityInput.Text.Trim()))
         { SaveStatus.Text = T("Wyszukaj miejscowość i wybierz wynik z listy."); return; }
-        try { Autostart.Set(StartupInput.IsChecked == true); }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
-        { SaveStatus.Text = T("Nie udało się zmienić autostartu: ") + ex.Message; return; }
         if (selected != null)
         { settings.City = selected.Name; settings.Latitude = selected.Latitude; settings.Longitude = selected.Longitude; }
         settings.Scale = ScaleInput.Value / 100; settings.Opacity = OpacityInput.Value / 100;
+        settings.TextOpacity = TextOpacityInput.Value / 100;
         settings.BackgroundColor = backgroundColor;
         settings.FontColor = fontColor;
         settings.FontFamily = FontInput.SelectedItem is string family && family != DefaultFont ? family : "";
@@ -108,7 +109,10 @@ public partial class SettingsWindow : Window
         settings.Use24HourClock = ClockFormatInput.SelectedIndex == 0;
         settings.RefreshMinutes = (int)(IntervalInput.SelectedItem ?? 15);
         settings.Topmost = TopmostInput.IsChecked == true; settings.Locked = LockInput.IsChecked == true;
-        SettingsApplied?.Invoke(this, EventArgs.Empty); Close();
+        if (CommitSettings == null) { SaveStatus.Text = T("Nie udało się zapisać ustawień"); return; }
+        string? error = CommitSettings(settings.Clone(), StartupInput.IsChecked == true);
+        if (error != null) { SaveStatus.Text = error; return; }
+        Close();
     }
     private void Cancel(object sender, RoutedEventArgs e) => Close();
     private void UpdateColorSwatch()
@@ -149,12 +153,16 @@ public partial class SettingsWindow : Window
         var text = Appearance.TextColor(backgroundColor, fontColor);
         FontColorSwatch.Background = new SolidColorBrush(text);
         FontColorSwatch.ToolTip = string.IsNullOrEmpty(fontColor) ? T("Automatyczny") : fontColor;
-        FontPreviewBackground.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(backgroundColor));
+        FontPreviewBackground.Background = Appearance.Background((Color)ColorConverter.ConvertFromString(backgroundColor));
+        FontPreviewBackground.Background.Opacity = OpacityInput.Value >= 40 ? OpacityInput.Value / 100 : 1;
         FontPreview.Foreground = new SolidColorBrush(text);
+        FontPreview.Opacity = TextOpacityInput.Value >= 40 ? TextOpacityInput.Value / 100 : 1;
         FontPreview.FontFamily = new FontFamily(FontInput.SelectedItem is string family && family != DefaultFont ? family : "Segoe UI");
         bool use24 = ClockFormatInput.SelectedIndex != 1;
         FontPreview.Text = ClockFormat.Time(new DateTime(2026, 10, 26, 15, 34, 0), use24) + " · " +
             (language == "en" ? "Monday" : "Poniedziałek") + " · 21°C";
+        double contrast = Appearance.MinimumContrast((Color)ColorConverter.ConvertFromString(backgroundColor), text, FontPreview.Opacity);
+        ContrastLabel.Text = contrast < 4.5 ? T("Niski kontrast tekstu — wybierz jaśniejszy lub ciemniejszy kolor.") : "";
     }
     private void ChooseFontColor(object sender, RoutedEventArgs e)
     {
@@ -168,7 +176,7 @@ public partial class SettingsWindow : Window
     { fontColor = ""; UpdateFontPreview(); }
     private void CaptureLabels(DependencyObject element)
     {
-        if (element is TextBlock block && block.Name is not ("SearchStatus" or "FontPreview" or "ScaleLabel" or "OpacityLabel" or "SaveStatus") && !string.IsNullOrEmpty(block.Text))
+        if (element is TextBlock block && block.Name is not ("SearchStatus" or "FontPreview" or "ScaleLabel" or "OpacityLabel" or "TextOpacityLabel" or "SaveStatus" or "RecoveryLabel" or "VersionLabel" or "ContrastLabel") && !string.IsNullOrEmpty(block.Text))
             labels[block] = block.Text;
         if (element is ContentControl control && control.Content is string content) captions[control] = content;
         string name = AutomationProperties.GetName(element);
@@ -192,6 +200,8 @@ public partial class SettingsWindow : Window
         OpacityLabel.Text = $"{OpacityInput.Value:0}% {T("widoczności")}";
         SearchStatus.Text = T(Places.Items.Count > 0 ? "Wybierz właściwą miejscowość i zapisz ustawienia." : "Wpisz nazwę i wybierz miejscowość z listy.");
         SaveStatus.Text = "";
+        RecoveryLabel.Text = recoveryNotice == null ? "" : T(recoveryNotice);
+        TextOpacityLabel.Text = $"{TextOpacityInput.Value:0}%";
         UpdateFontPreview();
     }
     private void LanguageChanged(object sender, SelectionChangedEventArgs e)
@@ -202,4 +212,6 @@ public partial class SettingsWindow : Window
     }
     private void ClockFormatChanged(object sender, SelectionChangedEventArgs e)
     { if (ready) UpdateFontPreview(); }
+    private void TextOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    { if (TextOpacityLabel != null) TextOpacityLabel.Text = $"{e.NewValue:0}%"; if (ready) UpdateFontPreview(); }
 }

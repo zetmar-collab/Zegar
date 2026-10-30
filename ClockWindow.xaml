@@ -1,5 +1,5 @@
 <Window x:Class="Zegar.ClockWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Title="Zegar HTC" Width="420" Height="382" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" FontFamily="Segoe UI" Foreground="{DynamicResource ThemePrimary}" MouseLeftButtonDown="DragWidget">
+ Icon="pack://application:,,,/Zegar;component/assets/Zegar.ico" Title="Zegar HTC" Width="420" Height="382" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" FontFamily="Segoe UI" Foreground="{DynamicResource ThemePrimary}" MouseLeftButtonDown="DragWidget">
  <Window.Resources>
   <Style x:Key="FlipNumber" TargetType="TextBlock">
    <Setter Property="FontFamily" Value="Arial"/><Setter Property="FontWeight" Value="Bold"/>
@@ -34,7 +34,7 @@
      <Border Grid.Column="2" Width="4" Height="17" Background="#626973" HorizontalAlignment="Right" CornerRadius="1"/>
     </Grid>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-     <TextBlock x:Name="DateLabel" FontSize="14" Foreground="{DynamicResource ThemePrimary}"/>
+     <TextBlock x:Name="DateLabel" FontSize="14" MaxWidth="300" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource ThemePrimary}"/>
      <TextBlock x:Name="PeriodLabel" Margin="8,0,0,0" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource ThemePrimary}"/>
     </StackPanel>
     <Border Grid.Row="3" Background="{DynamicResource ThemeLine}"/>
@@ -43,8 +43,9 @@
      <TextBlock x:Name="WeatherIcon" Text="☁" FontFamily="Segoe UI Symbol" FontSize="51" Foreground="#FFD77C" VerticalAlignment="Center" HorizontalAlignment="Left"/>
      <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,6,0">
       <TextBlock x:Name="CityLabel" Text="Warszawa" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-      <TextBlock x:Name="ConditionLabel" Text="Pobieranie pogody…" Foreground="{DynamicResource ThemeSecondary}" FontSize="11" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
-      <TextBlock x:Name="DetailsLabel" Foreground="{DynamicResource ThemeMuted}" FontSize="10" Margin="0,5,0,0"/>
+      <TextBlock x:Name="ConditionLabel" Text="Pobieranie pogody…" Foreground="{DynamicResource ThemeSecondary}" FontSize="12" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+      <TextBlock x:Name="DetailsLabel" Foreground="{DynamicResource ThemeMuted}" FontSize="11" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+      <Button x:Name="ForecastButton" Content="Prognoza…" Click="OpenForecast" Padding="0" Margin="0,4,0,0" HorizontalAlignment="Left" Background="Transparent" Foreground="{DynamicResource ThemePrimary}" FontSize="11"/>
      </StackPanel>
      <StackPanel Grid.Column="2" VerticalAlignment="Center">
       <TextBlock x:Name="TemperatureLabel" Text="—°" FontSize="37" FontWeight="Light" HorizontalAlignment="Right"/>
@@ -52,7 +53,7 @@
      </StackPanel>
     </Grid>
     <Grid Grid.Row="5" Margin="2,3,2,0">
-     <TextBlock x:Name="StatusLabel" Text="Łączenie…" FontSize="9" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/>
+     <TextBlock x:Name="StatusLabel" Text="Łączenie…" FontSize="10" MaxWidth="255" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource ThemeMuted}" VerticalAlignment="Center"/>
      <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="9"><Hyperlink NavigateUri="https://open-meteo.com/" RequestNavigate="OpenAttribution" Foreground="{DynamicResource ThemeMuted}" TextDecorations="None">Open-Meteo ↗</Hyperlink></TextBlock>
     </Grid>
    </Grid>
