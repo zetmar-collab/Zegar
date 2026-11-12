@@ -4,11 +4,17 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Zegar;
 
 public sealed record ForecastDay(DateTimeOffset Date, double Minimum, double Maximum, int? PrecipitationProbability, int Code, DateTimeOffset? Sunrise, DateTimeOffset? Sunset);
-public sealed record WeatherSnapshot(double Latitude, double Longitude, Weather Current, List<ForecastDay> Forecast, string TimeZone, DateTimeOffset FetchedAt);
+public sealed record ForecastHour(DateTimeOffset Time, double Temperature, int? PrecipitationProbability, int Code, double Wind);
+public sealed record WeatherSnapshot(double Latitude, double Longitude, Weather Current, List<ForecastDay> Forecast, string TimeZone, DateTimeOffset FetchedAt)
+{
+    public List<ForecastHour> Hourly { get; init; } = new();
+}
 
 public sealed class WeatherState
 {
@@ -17,15 +23,18 @@ public sealed class WeatherState
     public bool Offline { get; private set; }
     public bool Cached { get; private set; }
     public string? Error { get; private set; }
+    public DateTimeOffset? LastAttempt { get; private set; }
+    public DateTimeOffset? LastSuccess { get; private set; }
+    public DateTimeOffset? NextAttempt { get; set; }
     public static bool SameLocation(double lat1, double lon1, double lat2, double lon2) => Math.Abs(lat1 - lat2) < .00001 && Math.Abs(lon1 - lon2) < .00001;
     public void SelectLocation(double latitude, double longitude)
     {
         if (Snapshot != null && !SameLocation(latitude, longitude, Snapshot.Latitude, Snapshot.Longitude))
         { Snapshot = null; Cached = Offline = IsLoading = false; Error = null; }
     }
-    public void LoadCache(WeatherSnapshot snapshot) { Snapshot = snapshot; Cached = true; Offline = IsLoading = false; }
-    public void Begin() => IsLoading = true;
-    public void Complete(WeatherSnapshot snapshot) { Snapshot = snapshot; IsLoading = Offline = Cached = false; Error = null; }
+    public void LoadCache(WeatherSnapshot snapshot) { Snapshot = snapshot; Cached = true; Offline = IsLoading = false; Error=null; }
+    public void Begin() { IsLoading = true; LastAttempt=DateTimeOffset.UtcNow; NextAttempt=null; }
+    public void Complete(WeatherSnapshot snapshot) { Snapshot = snapshot; IsLoading = Offline = Cached = false; Error = null; LastSuccess=snapshot.FetchedAt; }
     public void Fail(string error) { IsLoading = false; Offline = true; Error = error; }
     public void Cancel() => IsLoading = false;
     public string Status(string language, bool use24, DateTimeOffset now)
@@ -43,6 +52,7 @@ public sealed class WeatherState
 public sealed class WeatherCacheStore
 {
     private readonly string folder;
+    private readonly SemaphoreSlim writes = new(1,1);
     public WeatherCacheStore(string? folder = null) => this.folder = folder ?? Path.Combine(SettingsStore.Folder, "weather-cache");
     private string PathFor(double latitude, double longitude) => Path.Combine(folder, FormattableString.Invariant($"{latitude:F5}_{longitude:F5}.json"));
     public WeatherSnapshot? Load(double latitude, double longitude)
@@ -50,14 +60,24 @@ public sealed class WeatherCacheStore
         try
         {
             var snapshot = JsonSerializer.Deserialize<WeatherSnapshot>(File.ReadAllText(PathFor(latitude, longitude)));
-            if (snapshot?.Current == null || snapshot.Forecast == null || !WeatherState.SameLocation(latitude, longitude, snapshot.Latitude, snapshot.Longitude) ||
+            if (snapshot?.Current == null || snapshot.Forecast == null || snapshot.Hourly == null || string.IsNullOrWhiteSpace(snapshot.TimeZone) || !WeatherState.SameLocation(latitude, longitude, snapshot.Latitude, snapshot.Longitude) ||
                 !double.IsFinite(snapshot.Current.Temperature) || !double.IsFinite(snapshot.Current.FeelsLike) || !double.IsFinite(snapshot.Current.Wind) || snapshot.Current.ObservedAt > DateTimeOffset.UtcNow.AddHours(1) ||
-                snapshot.Forecast.Any(day => day == null || !double.IsFinite(day.Minimum) || !double.IsFinite(day.Maximum) || day.Minimum > day.Maximum || day.PrecipitationProbability is < 0 or > 100)) return null;
+                snapshot.Forecast.Any(day => day == null || !double.IsFinite(day.Minimum) || !double.IsFinite(day.Maximum) || day.Minimum > day.Maximum || day.PrecipitationProbability is < 0 or > 100) ||
+                snapshot.Hourly.Count>96 || snapshot.Hourly.Any(hour=>hour==null || !double.IsFinite(hour.Temperature) || !double.IsFinite(hour.Wind) || hour.Wind<0 || hour.PrecipitationProbability is <0 or >100)) return null;
             return snapshot;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
     public void Save(WeatherSnapshot snapshot)
+    {
+        writes.Wait();try { SaveCore(snapshot); } finally {writes.Release();}
+    }
+    public async Task SaveAsync(WeatherSnapshot snapshot)
+    {
+        await writes.WaitAsync().ConfigureAwait(false);
+        try { await Task.Run(()=>SaveCore(snapshot)).ConfigureAwait(false); } finally {writes.Release();}
+    }
+    private void SaveCore(WeatherSnapshot snapshot)
     {
         Directory.CreateDirectory(folder);
         string path = PathFor(snapshot.Latitude, snapshot.Longitude), temp = path + ".tmp";

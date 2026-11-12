@@ -103,6 +103,60 @@ try
     try {await service.GetSnapshotAsync(50,19,default);}catch(System.Text.Json.JsonException){failed=true;}
     Check(failed,"Odrzucenie niespójnych tablic prognozy");
 
+    handler.Body = """{"results":[{"name":"Bad","latitude":1e100,"longitude":0},{"name":null,"latitude":50,"longitude":19}]}""";
+    Check((await service.SearchAsync("Bad",default)).Count == 0,"Geokodowanie odrzuca błędne współrzędne i pustą nazwę");
+    cache.Save(snapshot with { TimeZone = null! });
+    Check(cache.Load(50,19) == null,"Cache bez strefy czasowej jest odrzucany");
+    handler.Body="""{"current":{"temperature_2m":1e400,"apparent_temperature":5,"weather_code":3,"is_day":0,"wind_speed_10m":10,"time":1792886400}}""";
+    failed=false;
+    try { await service.GetSnapshotAsync(50,19,default); } catch(System.Text.Json.JsonException) { failed=true; }
+    Check(failed,"Produkcyjny parser odrzuca nieskończoną temperaturę");
+    handler.Status=HttpStatusCode.ServiceUnavailable;failed=false;
+    try { await service.GetSnapshotAsync(50,19,default); } catch(HttpRequestException) { failed=true; }
+    Check(failed,"Produkcyjne pobranie prognozy obsługuje błąd HTTP");
+    failed=false;
+    try { await service.GetSnapshotAsync(50,19,cancel.Token); } catch(OperationCanceledException) { failed=true; }
+    Check(failed,"Produkcyjne pobranie prognozy obsługuje anulowanie");
+
+    var preferences=new WidgetSettings {TemperatureUnit="F",WindUnit="ms",Compact=true};
+    Check(WeatherUnits.Temperature(0,preferences)=="32°F" && WeatherUnits.Wind(36,preferences)=="10 m/s","Jednostki przeliczają dane bez zmiany cache");
+    preferences.WindUnit="mph";
+    Check(WeatherUnits.Wind(16.09344,preferences)=="10 mph","Przeliczanie prędkości na mph");
+    preferences.Favorites.Add(new Place("Gliwice","PL","",50.3,18.6));
+    preferences.Profiles.Add(AppearanceProfile.Capture("Noc",preferences));
+    var cloned=preferences.Clone();cloned.Favorites.Clear();cloned.Profiles.Clear();
+    Check(preferences.Favorites.Count==1 && preferences.Profiles.Count==1,"Kopia ustawień izoluje ulubione i profile od anulowanego edytora");
+    store.Save(preferences);var roundtrip=store.Load();
+    Check(roundtrip.Compact && roundtrip.TemperatureUnit=="F" && roundtrip.Favorites[0].Name=="Gliwice" && roundtrip.Profiles[0].Name=="Noc","Trwałość trybu, jednostek, ulubionych i profili");
+    var badProfile=new AppearanceProfile("Zły","bad","bad","",double.NaN,-1,5,true).Normalized();
+    Check(badProfile.BackgroundColor=="#171E2B" && badProfile.Scale==1 && badProfile.Opacity==.4 && badProfile.TextOpacity==1,"Profile walidują kolory i zakresy");
+    var reminder=new ReminderState();var fixedNow=new DateTimeOffset(2026,11,12,10,0,0,TimeSpan.Zero);
+    reminder.StartTimer(25,fixedNow);
+    Check(!reminder.Tick(fixedNow.AddMinutes(24)) && reminder.Tick(fixedNow.AddHours(2)) && !reminder.Tick(fixedNow.AddHours(3)),"Minutnik wyzwala się raz i nadrabia uśpienie");
+    reminder.Snooze(fixedNow);Check(!reminder.Ringing && reminder.DueAt==fixedNow.AddMinutes(5),"Drzemka trwa pięć minut");
+    reminder.Stop();Check(reminder.DueAt==null && !reminder.Ringing,"Zatrzymanie usuwa aktywny termin");
+    reminder.StartTimer(1440,fixedNow);Check(reminder.Remaining(fixedNow)=="24:00:00","Minutnik 24-godzinny nie zeruje wyświetlanej liczby godzin");
+    reminder.StartAlarm(new TimeOnly(9,0),fixedNow.UtcDateTime,TimeZoneInfo.Utc);
+    Check(reminder.DueAt==fixedNow.AddDays(1).AddHours(-1),"Alarm o minionej godzinie ustawia następny dzień");
+    var warsaw=TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw");failed=false;
+    try{reminder.StartAlarm(new TimeOnly(2,30),new DateTime(2027,3,28,0,0,0),warsaw);}catch(ArgumentException){failed=true;}
+    Check(failed,"Alarm odrzuca nieistniejącą godzinę przy zmianie czasu");
+    roundtrip.Reminder.StartTimer(5,fixedNow);store.Save(roundtrip);
+    Check(store.Load().Reminder.DueAt==fixedNow.AddMinutes(5),"Termin przypomnienia przetrwa restart aplikacji");
+    var firstWrite=store.SaveAsync(new WidgetSettings {City="First"});var secondWrite=store.SaveAsync(new WidgetSettings {City="Second"});
+    await Task.WhenAll(firstWrite,secondWrite);
+    Check(store.Load().City=="Second","Zapisy w tle zachowują kolejność wywołań");
+    handler.Status=HttpStatusCode.OK;
+    handler.Body="""{"timezone":"Europe/Warsaw","current":{"temperature_2m":8,"apparent_temperature":5,"weather_code":3,"is_day":0,"wind_speed_10m":10,"time":1792886400},"hourly":{"time":[1792886400],"temperature_2m":[8],"precipitation_probability":[null],"weather_code":[3],"wind_speed_10m":[10]}}""";
+    var hourly=await service.GetSnapshotAsync(50,19,default);
+    Check(hourly.Hourly.Count==1 && hourly.Hourly[0].PrecipitationProbability==null && handler.LastUri!.Contains("hourly="),"Prognoza godzinowa parsuje dane i opcjonalne opady");
+    await cache.SaveAsync(hourly);Check(cache.Load(50,19)?.Hourly.Count==1,"Prognoza godzinowa jest dostępna z cache");
+    handler.Body=handler.Body.Replace("\"wind_speed_10m\":[10]","\"wind_speed_10m\":[]");failed=false;
+    try{await service.GetSnapshotAsync(50,19,default);}catch(System.Text.Json.JsonException){failed=true;}
+    Check(failed,"Niespójne tablice godzinowe są odrzucane");
+    using(var timeoutHttp=new HttpClient(new SlowHandler()){Timeout=TimeSpan.FromMilliseconds(50)})
+    {failed=false;try{await new WeatherService(timeoutHttp).GetSnapshotAsync(50,19,default);}catch(OperationCanceledException){failed=true;}Check(failed,"Limit czasu obejmuje produkcyjne pobranie pogody");}
+
     if (args.Contains("--live"))
     {
         using var liveHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -113,7 +167,7 @@ try
         Check(double.IsFinite(current.Temperature) && (DateTimeOffset.UtcNow - current.ObservedAt).Duration() < TimeSpan.FromHours(3), "LIVE: aktualne dane pogodowe Open-Meteo");
         Console.WriteLine($"LIVE: {cities[0].Name}: {current.Temperature}°C, {WeatherService.Description(current.Code)}, {current.ObservedAt:O}");
         var liveForecast=await live.GetSnapshotAsync(cities[0].Latitude,cities[0].Longitude,default);
-        Check(liveForecast.Forecast.Count==3 && liveForecast.Forecast.All(day=>day.Minimum<=day.Maximum),"LIVE: 3-dniowa prognoza Open-Meteo");
+        Check(liveForecast.Forecast.Count==3 && liveForecast.Forecast.All(day=>day.Minimum<=day.Maximum) && liveForecast.Hourly.Count>=24,"LIVE: prognoza dzienna i godzinowa Open-Meteo");
     }
     Console.WriteLine($"Wynik: {checks} testów OK.");
 }
@@ -130,4 +184,9 @@ sealed class StubHandler : HttpMessageHandler
         LastUri = request.RequestUri!.AbsoluteUri;
         return Task.FromResult(new HttpResponseMessage(Status) { Content = new StringContent(Body) });
     }
+}
+sealed class SlowHandler:HttpMessageHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
+    {await Task.Delay(TimeSpan.FromSeconds(5),cancellationToken);return new HttpResponseMessage(HttpStatusCode.OK);}
 }

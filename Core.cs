@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -38,6 +39,12 @@ public sealed class WidgetSettings
     public bool Locked { get; set; }
     public bool Topmost { get; set; }
     public int RefreshMinutes { get; set; } = 15;
+    public bool Compact { get; set; }
+    public string TemperatureUnit { get; set; } = "C";
+    public string WindUnit { get; set; } = "kmh";
+    public List<Place> Favorites { get; set; } = new();
+    public List<AppearanceProfile> Profiles { get; set; } = new();
+    public ReminderState Reminder { get; set; } = new();
     public void Normalize()
     {
         if (string.IsNullOrWhiteSpace(City)) City = "Warszawa";
@@ -55,16 +62,27 @@ public sealed class WidgetSettings
         if (!IsRgb(FontColor)) FontColor = "";
         if (string.IsNullOrWhiteSpace(FontFamily) || FontFamily.Length > 200) FontFamily = "";
         if (Language != "en") Language = "pl";
+        TemperatureUnit = TemperatureUnit == "F" ? "F" : "C";
+        WindUnit = WindUnit is "ms" or "mph" ? WindUnit : "kmh";
+        Favorites = (Favorites ?? new()).Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name) && WeatherService.ValidCoordinates(p.Latitude,p.Longitude)).DistinctBy(p => (Math.Round(p.Latitude,5),Math.Round(p.Longitude,5))).Take(30).ToList();
+        Profiles = (Profiles ?? new()).Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name)).DistinctBy(p => p.Name.Trim(),StringComparer.OrdinalIgnoreCase).Take(20).Select(p => p.Normalized()).ToList();
+        Reminder ??= new(); Reminder.Normalize();
     }
     private static bool IsRgb(string? value) => value != null && value.Length == 7 && value[0] == '#' &&
         int.TryParse(value.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out _);
-    public WidgetSettings Clone() => (WidgetSettings)MemberwiseClone();
+    public WidgetSettings Clone()
+    {
+        var result = (WidgetSettings)MemberwiseClone();
+        result.Favorites = new(Favorites ?? new()); result.Profiles = new(Profiles ?? new()); result.Reminder = (Reminder ?? new()).Clone();
+        return result;
+    }
 }
 
 public sealed class SettingsStore
 {
     public static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZegarHTC");
     private readonly string path;
+    private readonly SemaphoreSlim writes = new(1,1);
     public bool RecoveredFromBackup { get; private set; }
     public bool LoadFailed { get; private set; }
     public SettingsStore(string? path = null) => this.path = path ?? Path.Combine(Folder, "settings.json");
@@ -84,6 +102,20 @@ public sealed class SettingsStore
     }
     public void Save(WidgetSettings settings) => Commit(settings, () => { }, () => { });
     public void Commit(WidgetSettings settings, Action applyExternal, Action rollbackExternal)
+    {
+        writes.Wait();
+        try { CommitCore(settings,applyExternal,rollbackExternal); }
+        finally { writes.Release(); }
+    }
+    public async Task CommitAsync(WidgetSettings settings, Action applyExternal, Action rollbackExternal)
+    {
+        var captured=settings.Clone();
+        await writes.WaitAsync().ConfigureAwait(false);
+        try { await Task.Run(()=>CommitCore(captured,applyExternal,rollbackExternal)).ConfigureAwait(false); }
+        finally { writes.Release(); }
+    }
+    public Task SaveAsync(WidgetSettings settings) => CommitAsync(settings,()=>{},()=>{});
+    private void CommitCore(WidgetSettings settings, Action applyExternal, Action rollbackExternal)
     {
         var normalized = settings.Clone(); normalized.Normalize();
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -132,10 +164,22 @@ public sealed class WeatherService
         var places = new List<Place>();
         if (json.RootElement.TryGetProperty("results", out var results))
             foreach (var item in results.EnumerateArray())
-                places.Add(new Place(item.GetProperty("name").GetString()!, Text(item, "country"), Text(item, "admin1"), item.GetProperty("latitude").GetDouble(), item.GetProperty("longitude").GetDouble()));
+            {
+                string placeName = Text(item, "name");
+                double latitude = item.GetProperty("latitude").GetDouble(), longitude = item.GetProperty("longitude").GetDouble();
+                if (string.IsNullOrWhiteSpace(placeName) || !ValidCoordinates(latitude, longitude)) continue;
+                places.Add(new Place(placeName, Text(item, "country"), Text(item, "admin1"), latitude, longitude));
+            }
         return places;
     }
     private static string Text(JsonElement item, string key) => item.TryGetProperty(key, out var value) ? value.GetString() ?? "" : "";
+    public static bool ValidCoordinates(double latitude, double longitude) => double.IsFinite(latitude) && double.IsFinite(longitude) && latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180;
+    private static Weather ParseCurrent(JsonElement current)
+    {
+        var result = new Weather(current.GetProperty("temperature_2m").GetDouble(), current.GetProperty("apparent_temperature").GetDouble(), current.GetProperty("weather_code").GetInt32(), current.GetProperty("is_day").GetInt32() == 1, current.GetProperty("wind_speed_10m").GetDouble(), DateTimeOffset.FromUnixTimeSeconds(current.GetProperty("time").GetInt64()));
+        if (!double.IsFinite(result.Temperature) || !double.IsFinite(result.FeelsLike) || !double.IsFinite(result.Wind) || result.Wind < 0) throw new JsonException("Invalid weather values.");
+        return result;
+    }
     public async Task<Weather> GetAsync(double latitude, double longitude, CancellationToken cancellation)
     {
         string url = FormattableString.Invariant($"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m&temperature_unit=celsius&wind_speed_unit=kmh&timeformat=unixtime&timezone=auto&forecast_days=1");
@@ -143,18 +187,18 @@ public sealed class WeatherService
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
         var current = json.RootElement.GetProperty("current");
-        return new Weather(current.GetProperty("temperature_2m").GetDouble(), current.GetProperty("apparent_temperature").GetDouble(), current.GetProperty("weather_code").GetInt32(), current.GetProperty("is_day").GetInt32() == 1, current.GetProperty("wind_speed_10m").GetDouble(), DateTimeOffset.FromUnixTimeSeconds(current.GetProperty("time").GetInt64()));
+        return ParseCurrent(current);
     }
     public async Task<WeatherSnapshot> GetSnapshotAsync(double latitude, double longitude, CancellationToken cancellation)
     {
-        string url = FormattableString.Invariant($"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m&daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code,sunrise,sunset&temperature_unit=celsius&wind_speed_unit=kmh&timeformat=unixtime&timezone=auto&forecast_days=3");
+        if (!ValidCoordinates(latitude,longitude)) throw new ArgumentOutOfRangeException(nameof(latitude));
+        string url = FormattableString.Invariant($"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m&daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code,sunrise,sunset&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m&temperature_unit=celsius&wind_speed_unit=kmh&timeformat=unixtime&timezone=auto&forecast_days=3");
         using var response = await http.GetAsync(url, cancellation);
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
         var root = json.RootElement;
         var current = root.GetProperty("current");
-        var weather = new Weather(current.GetProperty("temperature_2m").GetDouble(), current.GetProperty("apparent_temperature").GetDouble(), current.GetProperty("weather_code").GetInt32(), current.GetProperty("is_day").GetInt32() == 1, current.GetProperty("wind_speed_10m").GetDouble(), DateTimeOffset.FromUnixTimeSeconds(current.GetProperty("time").GetInt64()));
-        if (!double.IsFinite(weather.Temperature) || !double.IsFinite(weather.FeelsLike) || !double.IsFinite(weather.Wind)) throw new JsonException("Invalid weather values.");
+        var weather = ParseCurrent(current);
         var days = new List<ForecastDay>();
         if (root.TryGetProperty("daily", out var daily))
         {
@@ -172,7 +216,23 @@ public sealed class WeatherService
                 days.Add(new ForecastDay(DateTimeOffset.FromUnixTimeSeconds(times[i].GetInt64()), min, max, probability, daily.GetProperty(fields[3])[i].GetInt32(), Sun("sunrise", i), Sun("sunset", i)));
             }
         }
-        return new WeatherSnapshot(latitude, longitude, weather, days, Text(root, "timezone"), DateTimeOffset.UtcNow);
+        var hours = new List<ForecastHour>();
+        if (root.TryGetProperty("hourly",out var hourly))
+        {
+            var times=hourly.GetProperty("time");
+            string[] fields={"temperature_2m","precipitation_probability","weather_code","wind_speed_10m"};
+            foreach(string field in fields)
+                if (hourly.GetProperty(field).GetArrayLength()!=times.GetArrayLength()) throw new JsonException("Inconsistent hourly arrays.");
+            for(int i=0;i<Math.Min(96,times.GetArrayLength());i++)
+            {
+                double temperature=hourly.GetProperty(fields[0])[i].GetDouble(),wind=hourly.GetProperty(fields[3])[i].GetDouble();
+                int? probability=hourly.GetProperty(fields[1])[i].ValueKind==JsonValueKind.Null?null:hourly.GetProperty(fields[1])[i].GetInt32();
+                if(!double.IsFinite(temperature)||!double.IsFinite(wind)||wind<0||probability is <0 or >100) throw new JsonException("Invalid hourly values.");
+                hours.Add(new ForecastHour(DateTimeOffset.FromUnixTimeSeconds(times[i].GetInt64()),temperature,probability,hourly.GetProperty(fields[2])[i].GetInt32(),wind));
+            }
+        }
+        string zone=Text(root,"timezone");
+        return new WeatherSnapshot(latitude, longitude, weather, days, string.IsNullOrWhiteSpace(zone)?"UTC":zone, DateTimeOffset.UtcNow) {Hourly=hours};
     }
     public static string Description(int code) => code switch
     {

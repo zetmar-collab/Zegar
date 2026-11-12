@@ -12,9 +12,11 @@ English · 12H (AM/PM):
 
 ## Pobieranie
 
+Bieżące wydanie: **1.5.1**. [Nowości i instrukcja](docs/RELEASE-1.5.1.md) · [Przegląd zmian interfejsu](docs/UI-REVIEW.md).
+
 - [Gotowy Zegar.exe — Windows x64](https://github.com/zetmar-collab/Zegar/releases/latest/download/Zegar.exe)
-- [Pakiet ZIP 1.4.0 ze skryptem instalacyjnym](https://github.com/zetmar-collab/Zegar/releases/download/v1.4.0/Zegar-1.4.0-win-x64.zip)
-- [Mniejszy ZIP — wymaga .NET 8 Windows Desktop Runtime x64](https://github.com/zetmar-collab/Zegar/releases/download/v1.4.0/Zegar-1.4.0-win-x64-framework.zip)
+- [Pakiet ZIP 1.5.1 ze skryptem instalacyjnym](https://github.com/zetmar-collab/Zegar/releases/download/v1.5.1/Zegar-1.5.1-win-x64.zip)
+- [Mniejszy ZIP — wymaga .NET 10.0.15 Windows Desktop Runtime x64 lub nowszej poprawki 10.0.x](https://github.com/zetmar-collab/Zegar/releases/download/v1.5.1/Zegar-1.5.1-win-x64-framework.zip)
 - [Wszystkie wydania](https://github.com/zetmar-collab/Zegar/releases)
 
 EXE można uruchomić bezpośrednio. Aby dodać skróty i autostart, pobierz ZIP, rozpakuj cały pakiet i uruchom poniższe polecenie w jego folderze. Kod źródłowy znajduje się w repozytorium, a pliki binarne w sekcji **Releases**. Sumy SHA-256 są dołączone do wydania w pliku `SHA256SUMS.txt`.
@@ -34,6 +36,14 @@ Opcje `-EnableAutostart` i `-DisableAutostart` jawnie zmieniają autostart; `-No
 Skrypt kopiuje program do `%LOCALAPPDATA%\Programs\ZegarHTC` i uruchamia widżet. Nie wymaga administratora. Domyślna pogoda: **Warszawa** — zmień miejscowość przez PPM → Ustawienia → Szukaj → wybierz wynik → Zapisz ustawienia. Autostart można wyłączyć i ponownie włączyć w ustawieniach; wpis znajduje się w `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ZegarHTC`. Systemowy Menedżer zadań może dodatkowo wyłączyć uruchamianie tego wpisu.
 
 ## Obsługa
+
+Wersja 1.5.1 porządkuje ustawienia w zakładkach Zegar, Pogoda i Wygląd oraz ujednolica okna pomocnicze. Opis przeglądu: [UI-REVIEW.md](docs/UI-REVIEW.md).
+
+![Ustawienia wyglądu — wersja 1.5.1](docs/images/settings-1.5.1.png)
+
+- **Nowości 1.5.0:** tryb kompaktowy, ulubione miasta, profile wyglądu i jednostki °C/°F oraz km/h, m/s, mph w ustawieniach.
+- **Ctrl+F:** prognoza dzienna i godzinowa; **Ctrl+T:** minutnik i alarm z drzemką; **Ctrl+D:** diagnostyka i eksport raportu; **Ctrl+,:** ustawienia. Funkcje są też dostępne w menu PPM; minutnik i diagnostyka również w zasobniku.
+- Zmiany ulubionych i profili zapisuje przycisk „Zapisz ustawienia”. Alarm wymaga działającej aplikacji; po uśpieniu nadrabia termin przy wznowieniu.
 
 - **PPM → Ustawienia → Język / Language**: Polski lub English. Język w ustawieniach zmienia się od razu; zastosowanie do widżetu i zapis następują po kliknięciu „Zapisz ustawienia”. Anulowanie zachowuje dotychczasowy język.
 - **Format zegara**: 24H lub 12H (AM/PM). W 12H północ to 12:00 AM, a południe 12:00 PM. AM/PM widać obok daty. Domyślnie zachowane są polski język i 24H, również po aktualizacji starszej wersji.
@@ -61,9 +71,9 @@ Right-click the widget → **Ustawienia** → **Język / Language** → **Englis
 
 ## Budowanie i testy
 
-Workflow GitHub Actions buduje Windows x64 i uruchamia 59 testów lokalnych. Dodatkowe 3 testy `--live` sprawdzają API. Szczegóły: [VERIFICATION.md](VERIFICATION.md).
+Workflow GitHub Actions buduje obie wersje Windows x64, uruchamia testy logiki, WPF, instalatora oraz zabezpieczeń pakowania i tworzy archiwa ZIP. Dodatkowe 3 testy `--live` sprawdzają API. Szczegóły: [VERIFICATION.md](VERIFICATION.md).
 
-Wymagania deweloperskie: Windows, .NET SDK 8 lub nowszy z obsługą .NET 8. Repozytorium nie używa zewnętrznych pakietów NuGet.
+Wymagania deweloperskie: Windows i .NET SDK 10. Wydanie zawiera .NET 10.0.15; wariant framework wymaga .NET 10.0.15 Windows Desktop Runtime x64 lub nowszej poprawki 10.0.x. Repozytorium nie używa zewnętrznych pakietów NuGet.
 
 ```powershell
 dotnet build .\Zegar.csproj -c Release
@@ -73,6 +83,7 @@ dotnet run --project .\tests\UiChecks\Zegar.UiChecks.csproj -c Release
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Installer.Checks.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1 -FrameworkDependent
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Packaging.Checks.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1
 ```
 
@@ -83,8 +94,10 @@ Testy obejmują zapis i uszkodzenie ustawień, walidację, parsowanie danych i k
 ```text
 App + InstanceActivation (jedna instancja, przywołanie przez named pipe, restart)
  └─ ClockWindow (WPF, timery, menu, zasobnik)
-     ├─ SettingsWindow (wyszukiwanie i preferencje)
-     ├─ ForecastWindow (prognoza 3 dni)
+     ├─ SettingsWindow (wyszukiwanie, ulubione, profile i jednostki)
+     ├─ ForecastWindow (prognoza 3 dni i godzinowa)
+     ├─ ReminderWindow + ReminderState (minutnik, alarm i drzemka)
+     ├─ DiagnosticsWindow + AppLog (lokalna diagnostyka i eksport)
      ├─ WeatherState + WeatherCacheStore (stan i cache na dysku)
      ├─ WindowPlacement (monitory i DPI)
      ├─ WeatherService → HTTPS → Open-Meteo Forecast / Geocoding
@@ -98,7 +111,7 @@ App + InstanceActivation (jedna instancja, przywołanie przez named pipe, restar
 
 Własna ikona jest osadzona w EXE i używana przez okna oraz zasobnik. Pliki `assets/Zegar.ico` i `assets/Zegar.png` odtwarza `scripts/Create-Icon.ps1`.
 
-Wydanie 1.4.0 pozostaje **niepodpisane**. Przygotowano `scripts/Sign.ps1`, który po uzyskaniu certyfikatu wydawcy podpisuje EXE SHA-256 ze znacznikiem czasu i weryfikuje wynik. Instrukcja: [docs/SIGNING.md](docs/SIGNING.md).
+Wersja 1.5.0 pozostaje **niepodpisana**: brak zaufanego certyfikatu wydawcy. Przygotowano `scripts/Sign.ps1`, który po uzyskaniu certyfikatu wydawcy podpisuje EXE SHA-256 ze znacznikiem czasu i weryfikuje wynik. Instrukcja: [docs/SIGNING.md](docs/SIGNING.md).
 
 ## Źródła danych i licencje
 

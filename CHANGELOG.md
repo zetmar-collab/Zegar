@@ -1,5 +1,24 @@
 # Historia zmian
 
+## 1.5.1 — 2026-11-12
+- Ustawienia podzielone na zakładki Zegar, Pogoda i Wygląd; stały pasek zapisu i rozwijane profile.
+- Wspólne style okien pomocniczych, karty, czytelniejsze nagłówki, przyciski i fokus klawiatury.
+- Prognoza z wyrównanymi kolumnami i wyróżnionymi temperaturami; nowy układ minutnika i diagnostyki.
+- Wektorowe ilustracje pogody, większe opisy na widżecie i zasoby wysokiego kontrastu w oknach pomocniczych.
+- Testy dostępności zakładek, małego okna i tłumaczeń oraz generowanie podglądów bez otwierania okien.
+
+## 1.5.0 — 2026-11-12
+- Aktualizacja do .NET 10 LTS; wydanie zawiera runtime 10.0.15.
+- Naprawy po audycie: zachowanie geometrii podczas zapisu edytora, walidacja cache i geokodowania, jednokrotna przezroczystość ikony.
+- Tryb kompaktowy, ulubione miejscowości, profile wyglądu i wybór jednostek.
+- Prognoza na najbliższe 24 godziny z cache i godzinami w strefie miejscowości.
+- Minutnik 1–1440 minut, alarm, drzemka, wyciszenie i trwały termin.
+- Panel diagnostyczny, eksport raportu i ograniczony lokalny log bez treści wyjątków.
+- Kolejka zapisów poza wątkiem UI, wspólny parser i ochrona przed spóźnionymi odpowiedziami API.
+- Weryfikacja wersji EXE i opcjonalnie podpisu przed pakowaniem; rozbudowane CI.
+- Rozszerzone testy oraz izolowany interaktywny podgląd `--visual`.
+- EXE pozostaje niepodpisany — brak zaufanego certyfikatu wydawcy.
+
 ## 1.4.0 — 2026-10-30
 - Naprawa harmonogramu automatycznego odświeżania: aktualizacja statusu zegara nie odsuwa już pobierania pogody.
 - Zachowanie danych i komunikatu offline przy zmianach wyglądu, blokady i zawsze na wierzchu; ponowienie po 2 minutach.

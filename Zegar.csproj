@@ -1,18 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Zegar</AssemblyName>
     <RootNamespace>Zegar</RootNamespace>
-    <Version>1.4.0</Version>
+    <Version>1.5.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets/Zegar.ico</ApplicationIcon>
     <!-- WPF owns process DPI awareness; WinForms is used only for tray and colour dialogs. -->
-    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+    <NoWarn>$(NoWarn);WFAC010;WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
   <ItemGroup><Resource Include="assets/Zegar.ico" /></ItemGroup>

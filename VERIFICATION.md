@@ -1,5 +1,29 @@
 # Weryfikacja — Zegar HTC
 
+## Aktualizacja 1.5.1 — 12.11.2026
+
+- Release: 0 błędów, 0 ostrzeżeń.
+- 57 testów logiki, 34 testy WPF, 7 testów instalatora i 3 testy pakowania: 101 lokalnych sprawdzeń. Dodatkowo 3 testy rzeczywistego API.
+- Regresje UI: host zawartości zakładek dostępny dla automatyzacji WPF, tłumaczenie kategorii PL/EN, brak dziedziczenia pogrubienia nagłówka przez formularz, zapis dostępny w małym oknie.
+- Kontrola rzeczywistych okien i renderów WPF: szczegóły w [UI-REVIEW.md](docs/UI-REVIEW.md).
+- Zmiana dotyczy wyglądu. Nie aktualizowano zainstalowanej aplikacji ani preferencji użytkownika; pozostaje brak certyfikatu wydawcy.
+
+## Aktualizacja 1.5.0 — 12.11.2026
+
+- Kompilacja Release: 0 błędów, 0 ostrzeżeń. Projekty aplikacji i testów używają .NET 10.
+- 57 testów logiki, 30 testów WPF, 7 testów polityki instalatora i 3 testy zabezpieczeń pakowania: 97 sprawdzeń lokalnych. Dodatkowe 3 testy rzeczywistego Open-Meteo: łącznie 100.
+- Regresje: geokodowanie z pustą nazwą i błędnymi współrzędnymi, cache bez strefy, jednokrotna przezroczystość ikony, geometria nowsza niż kopia edytora, AM/PM w trybie kompaktowym.
+- Nowe funkcje: konwersje jednostek, trwałość ulubionych i profili, izolacja anulowanego edytora, prognoza godzinowa i niespójne tablice, minutnik 24-godzinny, drzemka, alarm na następny dzień i nieistniejąca godzina przy zmianie czasu.
+- Produkcyjny zapis asynchroniczny: zmiany położenia i minutnika podczas zapisu zachowują się razem z preferencjami; blokada pliku wycofuje autostart. Testy używają prawdziwego kontekstu WPF Dispatcher.
+- Opóźniona odpowiedź poprzedniej lokalizacji nie zastępuje nowszej. Testy sprawdzają również pomyślne zakończenie obu zadań, a nie tylko końcowy model.
+- Raport diagnostyczny pomija miasto, a log nie zapisuje treści wyjątków. Testy logują w katalogach tymczasowych, bez zanieczyszczania logu użytkownika.
+- W rzeczywistych oknach izolowanego `--visual` sprawdzono otwarcie ustawień przez Ctrl+,, zapis trybu kompaktowego, zakładkę godzinową, uruchomienie minutnika, drzemkę pięciominutową oraz panel diagnostyczny przez Ctrl+D. Okna testowe zostały zamknięte.
+- Obie wersje EXE zbudowane skryptem wydania zawierają metadane 1.5.0; build samodzielny używa .NET 10.0.15. Wariant framework wymaga tej lub nowszej poprawki 10.0.x.
+- Zabezpieczenia pakowania odrzucają niespójną wersję, starszy EXE i brak podpisu przy `-RequireSignature` przed utworzeniem katalogu dystrybucji.
+- Nie znaleziono dostępnego zaufanego certyfikatu Code Signing. Certyfikaty samopodpisane nie zostały użyte; wydanie pozostaje niepodpisane.
+
+Nie wykonywano aktualizacji zainstalowanej aplikacji, zmian rejestru użytkownika ani publikacji w GitHub. Fizyczne zmiany monitorów/DPI, uśpienie komputera, dźwięk alarmu po rzeczywistym wznowieniu oraz autostart po kolejnym logowaniu wymagają osobnego testu sprzętowego.
+
 ## Aktualizacja 1.4.0 — 30.10.2026
 
 - Kompilacja Release: 0 błędów i 0 ostrzeżeń. Samodzielny EXE i wariant wymagający .NET budują się poprawnie.

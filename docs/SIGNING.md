@@ -1,6 +1,6 @@
 # Podpisywanie wydania Windows
 
-Wersja 1.4.0 nie ma podpisu Authenticode. Właściciel projektu nie ma obecnie certyfikatu wydawcy. Ikona i metadane EXE nie zastępują podpisu.
+Wersja 1.5.1 nie ma podpisu Authenticode. Właściciel projektu nie ma obecnie certyfikatu wydawcy. Ikona i metadane EXE nie zastępują podpisu.
 
 Po uzyskaniu certyfikatu do podpisywania kodu, z dostępnym kluczem prywatnym w magazynie Windows `CurrentUser/My` lub `LocalMachine/My`:
 
@@ -10,7 +10,7 @@ Po uzyskaniu certyfikatu do podpisywania kodu, z dostępnym kluczem prywatnym w 
 ./scripts/Sign.ps1 -CertificateThumbprint 'ODCISK_CERTYFIKATU'
 ./scripts/Sign.ps1 -CertificateThumbprint 'ODCISK_CERTYFIKATU' -FilePath ./publish-framework/Zegar.exe
 Get-AuthenticodeSignature ./publish/Zegar.exe
-./scripts/Package.ps1
+./scripts/Package.ps1 -RequireSignature
 ```
 
 Skrypt sprawdza ważność, klucz prywatny i przeznaczenie Code Signing, odrzuca certyfikat samopodpisany, podpisuje SHA-256 i żąda znacznika czasu. Kończy się błędem, jeżeli podpis nie ma statusu `Valid` lub brak potwierdzonego znacznika czasu. Domyślny serwer znacznika to DigiCert; można wskazać inny przez `-TimestampServer`.

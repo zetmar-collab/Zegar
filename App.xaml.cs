@@ -14,6 +14,8 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        AppLog.Write("startup");
+        AppDomain.CurrentDomain.UnhandledException+=(_,args)=>AppLog.Write("fatal",args.ExceptionObject as Exception);
         // The separate restart shortcut can recover even an unresponsive UI.
         if (e.Args.Contains("--restart"))
         {
@@ -45,8 +47,11 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             var language = new SettingsStore().Load().Language;
-            MessageBox.Show(UiText.Get("Nie udało się wykonać operacji. ", language) + args.Exception.Message, UiText.Get("Zegar HTC", language), MessageBoxButton.OK, MessageBoxImage.Warning);
+            AppLog.Write("ui-unhandled",args.Exception);
+            bool recoverable=args.Exception is IOException or UnauthorizedAccessException or OperationCanceledException;
+            MessageBox.Show(UiText.Get(recoverable?"Nie udało się wykonać operacji. Spróbuj ponownie.":"Nieoczekiwany błąd. Aplikacja zostanie zamknięta. Szczegóły zapisano w lokalnym logu.",language), UiText.Get("Zegar HTC", language), MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
+            if(!recoverable)Shutdown(1);
         };
         MainWindow = new ClockWindow();
         if (e.Args.Contains("--inspect")) MainWindow.ShowInTaskbar = true;
@@ -56,6 +61,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         activationStop.Cancel(); instance?.Dispose(); activationStop.Dispose();
+        AppLog.Write("shutdown");AppLog.FlushAsync().GetAwaiter().GetResult();
         base.OnExit(e);
     }
 }
